@@ -11,6 +11,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Object/MachO.h"
+#include "llvm/Support/Errc.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <memory>
 
 namespace llvm {
@@ -126,10 +128,53 @@ void MachOWriter::writeHeader() {
   memcpy(B.getBufferStart(), &Header, HeaderSize);
 }
 
+static void copyFixedSizedString(char *Dest, StringRef Src, size_t DestLen) {
+  size_t CopyLen = std::min(Src.size(), DestLen);
+  memcpy(reinterpret_cast<void *>(Dest), Src.data(), CopyLen);
+  memset(reinterpret_cast<void *>(Dest + CopyLen), '\0', DestLen - CopyLen);
+}
+
 void MachOWriter::writeLoadCommands() {
   uint8_t *Begin = B.getBufferStart() + headerSize();
   MachO::macho_load_command MLC;
   for (const auto &LC : O.LoadCommands) {
+    // Construct new load command.
+    MLC = LC.MachOLoadCommand;
+    switch (MLC.load_command_data.cmd) {
+      case MachO::LC_SEGMENT_64:
+        errs() << MLC.segment_command_64_data.cmdsize << "\n";
+        auto nsects = LC.Sections.size();
+        MLC.segment_command_64_data.nsects = nsects;
+        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * nsects;
+
+        if (IsLittleEndian != sys::IsLittleEndianHost)
+          MachO::swapStruct(MLC.segment_command_64_data);
+        memcpy(Begin, &MLC.segment_command_64_data, sizeof(MachO::segment_command_64));
+        Begin += sizeof(MachO::segment_command_64);
+
+        for (auto &Sec : LC.Sections) {
+          struct MachO::section_64 Temp;
+          copyFixedSizedString(Temp.sectname, Sec.Sectname, 16);
+          copyFixedSizedString(Temp.segname, Sec.Segname, 16);
+          Temp.addr = Sec.Addr;
+          Temp.size = Sec.Size;
+          Temp.offset = Sec.Offset;
+          Temp.align = Sec.Align;
+          Temp.reloff = Sec.RelOff;
+          Temp.nreloc = Sec.NReloc;
+          Temp.flags = Sec.Flags;
+          Temp.reserved1 = Sec.Reserved1;
+          Temp.reserved2 = Sec.Reserved2;
+          Temp.reserved3 = Sec.Reserved3;
+
+          if (IsLittleEndian != sys::IsLittleEndianHost)
+            MachO::swapStruct(Temp);
+          memcpy(Begin, &Temp, sizeof(MachO::section_64));
+          Begin += sizeof(MachO::section_64);
+        }
+        continue;
+    }
+
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
     assert(sizeof(MachO::LCStruct) + LC.Payload.size() ==                      \
@@ -143,6 +188,7 @@ void MachOWriter::writeLoadCommands() {
     Begin += LC.Payload.size();                                                \
     break;
 
+    // Copy the load command as it is.
     switch (LC.MachOLoadCommand.load_command_data.cmd) {
     default:
       assert(sizeof(MachO::load_command) + LC.Payload.size() ==
@@ -331,6 +377,100 @@ void MachOWriter::writeTail() {
 
   for (auto WriteOp : Queue)
     (this->*WriteOp.second)();
+}
+
+void MachOWriter::updateLoadCommandsSize() {
+  auto Size = 0;
+  for (auto &LC : O.LoadCommands) {
+    auto MLC = LC.MachOLoadCommand;
+    auto cmd = MLC.load_command_data.cmd;
+
+    switch (cmd) {
+      case MachO::LC_SEGMENT_64:
+        Size += sizeof(MachO::load_command);
+        for (auto &Sec : LC.Sections) {
+          Size += Sec.Content.size() + sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
+        }
+        continue;
+    }
+
+#define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct) \
+  case MachO::LCName:                                  \
+    Size += sizeof(MachO::LCStruct);                   \
+    break;
+
+    switch (cmd) {
+#include "llvm/BinaryFormat/MachO.def"
+    }
+#undef HANDLE_LOAD_COMMAND
+  }
+
+  O.Header.SizeOfCmds = Size;
+}
+
+// Updates offset fields in load commands and sections since they would be
+// corrupted if some sections are added, removed, or modified.
+Error MachOWriter::updateOffsets() {
+  // Compute and update the size of load commands.
+  auto SizeOfCmds = loadCommandsSize();
+  O.Header.NCmds = O.LoadCommands.size();
+  O.Header.SizeOfCmds = SizeOfCmds;
+
+  auto Offset = headerSize() + SizeOfCmds;
+  size_t SegSize;
+  // Section data.
+  for (auto &LC : O.LoadCommands) {
+    auto MLC = LC.MachOLoadCommand;
+    auto cmd = MLC.load_command_data.cmd;
+    switch (cmd) {
+      case MachO::LC_SEGMENT_64:
+        MLC.segment_command_64_data.fileoff = Offset;
+        SegSize = 0;
+        for (auto &Sec : LC.Sections) {
+          Sec.Size = Sec.Content.size() + sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
+          Sec.Offset = Offset; // TODO: alignment
+          Offset += Sec.Size;
+          SegSize += Sec.Size;
+        }
+        MLC.segment_command_64_data.filesize = SegSize;
+      break;
+    }
+  }
+
+  // Tail stuff.
+  auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
+  for (auto &LC : O.LoadCommands) {
+    auto MLC = LC.MachOLoadCommand;
+    auto cmd = MLC.load_command_data.cmd;
+    switch (cmd) {
+      case MachO::LC_SYMTAB:
+        MLC.symtab_command_data.symoff = Offset;
+        Offset += NListSize * MLC.symtab_command_data.nsyms;
+        MLC.symtab_command_data.stroff = Offset;
+        Offset += MLC.symtab_command_data.strsize;
+        break;
+      case MachO::LC_DYSYMTAB:
+        // TODO:
+        break;
+      case MachO::LC_SEGMENT_64:
+        // Do nothing.
+        break;
+      default:
+        // Abort if it's unsupported to prevent corrupting the object.
+        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d", cmd);
+    }
+  }
+
+  return Error::success();
+}
+
+Error MachOWriter::finalize() {
+  updateLoadCommandsSize();
+
+  if (auto E = updateOffsets())
+    return E;
+
+  return Error::success();
 }
 
 Error MachOWriter::write() {

@@ -34,8 +34,13 @@ struct MachHeader {
 };
 
 struct Section {
-  char Sectname[16];
-  char Segname[16];
+  std::string Sectname;
+  std::string Segname;
+
+  // The cannonical name (coined by me) is a string which represents the pair of
+  // the segment name and the section name written as "<segment>,<section>".
+  std::string CannonicalName;
+
   uint64_t Addr;
   uint64_t Size;
   uint32_t Offset;
@@ -199,6 +204,8 @@ struct Object {
   Optional<size_t> SymTabCommandIndex;
   /// The index of LC_DYLD_INFO or LC_DYLD_INFO_ONLY load command if present.
   Optional<size_t> DyLdInfoCommandIndex;
+
+  void removeSections(function_ref<bool(const Section &)> ToRemove);
 };
 
 } // end namespace macho

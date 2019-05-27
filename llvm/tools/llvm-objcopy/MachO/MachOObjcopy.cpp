@@ -18,6 +18,26 @@ namespace objcopy {
 namespace macho {
 
 using namespace object;
+using SectionPred = std::function<bool(const Section &Sec)>;
+
+static void RemoveSections(const CopyConfig &Config, Object &Obj) {
+  SectionPred RemovePred = [](const Section &) { return false; };
+
+  if (!Config.OnlySection.empty()) {
+    RemovePred = [&Config, RemovePred](const Section &Sec) {
+      if (is_contained(Config.OnlySection, Sec.CannonicalName))
+        return false;
+
+      if (RemovePred(Sec))
+        return false;
+
+      errs() << "removing " << Sec.CannonicalName << "\n";
+      return true;
+    };
+  }
+
+  Obj.removeSections(RemovePred);
+}
 
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
@@ -41,6 +61,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
                              "option not supported by llvm-objcopy for MachO");
   }
 
+  RemoveSections(Config, Obj);
   return Error::success();
 }
 
@@ -58,6 +79,8 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
     return createFileError(Config.InputFilename, std::move(E));
 
   MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), Out);
+  if (auto E = Writer.finalize())
+    return E;
   return Writer.write();
 }
 

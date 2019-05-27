@@ -17,6 +17,15 @@ namespace llvm {
 namespace objcopy {
 namespace macho {
 
+// Returns the length of the string. If Str is not terminated by NUL, returns
+// MaxLen otherwise return strlen(Str).
+size_t strlenOrMaxLen(const char *Str, size_t MaxLen) {
+  if (Str[MaxLen - 1] != '\0')
+    return MaxLen;
+
+  return strlen(Str);
+}
+
 void MachOReader::readHeader(Object &O) const {
   O.Header.Magic = MachOObj.getHeader().magic;
   O.Header.CPUType = MachOObj.getHeader().cputype;
@@ -30,8 +39,9 @@ void MachOReader::readHeader(Object &O) const {
 template <typename SectionType>
 Section constructSectionCommon(SectionType Sec) {
   Section S;
-  memcpy(S.Sectname, Sec.sectname, sizeof(Sec.sectname));
-  memcpy(S.Segname, Sec.segname, sizeof(Sec.segname));
+  S.Sectname = StringRef(Sec.sectname, strlenOrMaxLen(Sec.sectname, 16));
+  S.Segname = StringRef(Sec.segname, strlenOrMaxLen(Sec.segname, 16));
+  S.CannonicalName = (Twine(S.Segname) + "," + S.Sectname).str();
   S.Addr = Sec.addr;
   S.Size = Sec.size;
   S.Offset = Sec.offset;
@@ -79,7 +89,6 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
 
     Section &S = Sections.back();
 
-    StringRef SectName(S.Sectname);
     Expected<object::SectionRef> SecRef =
         MachOObj.getSection(NextSectionIndex++);
     if (!SecRef)

@@ -29,6 +29,9 @@ class MachOWriter {
   size_t symTableSize() const;
   size_t strTableSize() const;
 
+  void updateLoadCommandsSize();
+  Error updateOffsets();
+
   void writeHeader();
   void writeLoadCommands();
   void writeSections();
@@ -46,6 +49,7 @@ public:
       : O(O), Is64Bit(Is64Bit), IsLittleEndian(IsLittleEndian), B(B) {}
 
   size_t totalSize() const;
+  Error finalize();
   Error write();
 };
 

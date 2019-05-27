@@ -393,7 +393,7 @@ void MachOWriter::updateLoadCommandsSize() {
 
     switch (cmd) {
       case MachO::LC_SEGMENT_64:
-        Size += sizeof(MachO::load_command);
+        Size += sizeof(MachO::segment_command_64);
         for (auto &Sec : LC.Sections) {
           Size += Sec.Content.size() + sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
         }
@@ -423,6 +423,8 @@ Error MachOWriter::updateOffsets() {
   O.Header.SizeOfCmds = SizeOfCmds;
 
   auto Offset = headerSize() + SizeOfCmds;
+  errs() << "SizeOfCmds: " << (SizeOfCmds) << "\n";
+  errs() << "Offset:     " << (Offset) << "\n";
   size_t SegSize;
   // Section data.
   for (auto &LC : O.LoadCommands) {

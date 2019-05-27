@@ -512,6 +512,7 @@ static Error checkDysymtabCommand(const MachOObjectFile &Obj,
   BigSize = Dysymtab.nextrefsyms;
   BigSize *= sizeof(MachO::dylib_reference);
   BigSize += Dysymtab.extrefsymoff;
+  errs() << BigSize << ", " << FileSize << " " << (BigSize > FileSize) << ": " << Dysymtab.extrefsymoff << " " << Dysymtab.nextrefsyms << "\n";
   if (BigSize > FileSize)
     return malformedError("extrefsymoff field plus nextrefsyms field times "
                           "sizeof(struct dylib_reference) of LC_DYSYMTAB "

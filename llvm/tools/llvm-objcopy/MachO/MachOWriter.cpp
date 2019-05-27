@@ -143,9 +143,8 @@ void MachOWriter::writeLoadCommands() {
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT_64:
         errs() << MLC.segment_command_64_data.cmdsize << "\n";
-        auto nsects = LC.Sections.size();
-        MLC.segment_command_64_data.nsects = nsects;
-        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * nsects;
+        MLC.segment_command_64_data.nsects = LC.Sections.size();
+        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
 
         if (IsLittleEndian != sys::IsLittleEndianHost)
           MachO::swapStruct(MLC.segment_command_64_data);
@@ -172,6 +171,13 @@ void MachOWriter::writeLoadCommands() {
           memcpy(Begin, &Temp, sizeof(MachO::section_64));
           Begin += sizeof(MachO::section_64);
         }
+        continue;
+      case MachO::LC_DYSYMTAB:
+        errs() << "LC_DYSYM " << MLC.dysymtab_command_data.nextrefsyms << "\n";
+        if (IsLittleEndian != sys::IsLittleEndianHost)
+          MachO::swapStruct(MLC.dysymtab_command_data);
+        memcpy(Begin, &MLC.dysymtab_command_data, sizeof(MachO::dysymtab_command));
+        Begin += sizeof(MachO::dysymtab_command);
         continue;
     }
 
@@ -427,7 +433,7 @@ Error MachOWriter::updateOffsets() {
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
-          Sec.Size = Sec.Content.size() + sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
+          Sec.Size = Sec.Content.size();
           Sec.Offset = Offset; // TODO: alignment
           Offset += Sec.Size;
           SegSize += Sec.Size;
@@ -450,14 +456,21 @@ Error MachOWriter::updateOffsets() {
         Offset += MLC.symtab_command_data.strsize;
         break;
       case MachO::LC_DYSYMTAB:
-        // TODO:
+        MLC.dysymtab_command_data.tocoff = 0;
+        MLC.dysymtab_command_data.modtaboff = 0;
+        MLC.dysymtab_command_data.extrefsymoff = 0;
+        MLC.dysymtab_command_data.nextrefsyms = 0;
+        MLC.dysymtab_command_data.indirectsymoff = 0;
+        MLC.dysymtab_command_data.extreloff = 0;
+        MLC.dysymtab_command_data.locreloff = 0;
         break;
       case MachO::LC_SEGMENT_64:
         // Do nothing.
         break;
       default:
         // Abort if it's unsupported to prevent corrupting the object.
-        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d", cmd);
+        break;
+        // TODO: return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d)", cmd);
     }
   }
 

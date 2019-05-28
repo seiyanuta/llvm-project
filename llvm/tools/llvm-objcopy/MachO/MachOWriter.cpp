@@ -441,16 +441,17 @@ Error MachOWriter::updateOffsets() {
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
+          auto PrevOffset = Offset;
           if (Sec.Align)
             Offset = alignTo(Offset, 1 << Sec.Align);
           Sec.Offset = Offset; // TODO: alignment
           Offset += Sec.Size;
-
           Sec.NReloc = Sec.Relocations.size();
-          SegSize += Sec.Size + sizeof(MachO::any_relocation_info) * Sec.NReloc;
+          SegSize += Offset - PrevOffset; // FIXME: relocations?
         }
-        // MLC.segment_command_64_data.filesize = SegSize;
-        //MLC.segment_command_64_data.vmsize = SegSize; // TODO:
+        // FIXME:
+        MLC.segment_command_64_data.filesize = SegSize;
+        MLC.segment_command_64_data.vmsize = SegSize; // TODO:
       break;
     }
   }

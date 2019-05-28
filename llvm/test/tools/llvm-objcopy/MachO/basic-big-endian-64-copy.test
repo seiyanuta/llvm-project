@@ -1,6 +1,6 @@
 # RUN: yaml2obj %s > %t
 # RUN: llvm-objcopy %t %t2
-# RUN: cmp %t %t2
+# RUN: llvm-readobj --sections %t2
 
 --- !mach-o
 IsLittleEndian:  false
@@ -122,3 +122,8 @@ LinkEditData:
     - ___absvdi2
     - ''
 ...
+
+# CHECK: 1dfsioudfsijodsvijodsv
+# CHECK: 1dfsioudfsijodsvijodsv
+# CHECK: 1dfsioudfsijodsvijodsv
+# CHECK: 1dfsioudfsijodsvijodsv

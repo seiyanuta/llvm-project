@@ -172,7 +172,16 @@ void MachOWriter::writeLoadCommands() {
           Begin += sizeof(MachO::section_64);
         }
         continue;
+      case MachO::LC_SYMTAB:
+        // FIXME: delete me
+        errs() << "LC_SYMTAB: " << MLC.symtab_command_data.symoff << " addr=" << &MLC.symtab_command_data.symoff << "\n";
+        if (IsLittleEndian != sys::IsLittleEndianHost)
+          MachO::swapStruct(MLC.symtab_command_data);
+        memcpy(Begin, &MLC.dysymtab_command_data, sizeof(MachO::symtab_command));
+        Begin += sizeof(MachO::symtab_command);
+        continue;
       case MachO::LC_DYSYMTAB:
+        // FIXME: delete me
         errs() << "LC_DYSYM " << MLC.dysymtab_command_data.nextrefsyms << "\n";
         if (IsLittleEndian != sys::IsLittleEndianHost)
           MachO::swapStruct(MLC.dysymtab_command_data);
@@ -388,27 +397,24 @@ void MachOWriter::writeTail() {
 void MachOWriter::updateLoadCommandsSize() {
   auto Size = 0;
   for (auto &LC : O.LoadCommands) {
-    auto MLC = LC.MachOLoadCommand;
+    auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
 
     switch (cmd) {
       case MachO::LC_SEGMENT_64:
-        Size += sizeof(MachO::segment_command_64);
-        for (auto &Sec : LC.Sections) {
-          Size += Sec.Content.size() + sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
-        }
+        Size += sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
         continue;
     }
 
+    switch (cmd) {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct) \
   case MachO::LCName:                                  \
+    errs() << "lc size: " << sizeof(MachO::LCStruct) << "\n"; \
     Size += sizeof(MachO::LCStruct);                   \
     break;
-
-    switch (cmd) {
 #include "llvm/BinaryFormat/MachO.def"
-    }
 #undef HANDLE_LOAD_COMMAND
+    }
   }
 
   O.Header.SizeOfCmds = Size;
@@ -428,43 +434,74 @@ Error MachOWriter::updateOffsets() {
   size_t SegSize;
   // Section data.
   for (auto &LC : O.LoadCommands) {
-    auto MLC = LC.MachOLoadCommand;
-    auto cmd = MLC.load_command_data.cmd;
-    switch (cmd) {
+    auto &MLC = LC.MachOLoadCommand;
+    switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT_64:
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
-          Sec.Size = Sec.Content.size();
+          Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
+          if (Sec.Align)
+            Offset = alignTo(Offset, 1 << Sec.Align);
           Sec.Offset = Offset; // TODO: alignment
           Offset += Sec.Size;
-          SegSize += Sec.Size;
+
+          Sec.NReloc = Sec.Relocations.size();
+          SegSize += Sec.Size + sizeof(MachO::any_relocation_info) * Sec.NReloc;
         }
         MLC.segment_command_64_data.filesize = SegSize;
+        MLC.segment_command_64_data.vmsize = SegSize; // TODO:
+      break;
+    }
+  }
+
+  // Relocations.
+  for (auto &LC : O.LoadCommands) {
+    auto &MLC = LC.MachOLoadCommand;
+    switch (MLC.load_command_data.cmd) {
+      case MachO::LC_SEGMENT_64:
+        for (auto &Sec : LC.Sections) {
+          auto RelSize = sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
+          if (RelSize == 0)
+            continue;
+
+          Sec.RelOff = Offset;
+          Offset += RelSize;
+        }
       break;
     }
   }
 
   // Tail stuff.
+  errs() << "Tail start: " << Offset << "\n";
   auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   for (auto &LC : O.LoadCommands) {
-    auto MLC = LC.MachOLoadCommand;
+    auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
     switch (cmd) {
       case MachO::LC_SYMTAB:
+        errs() << "Updating symtab: " << Offset << ", size=" << NListSize * O.SymTable.NameList.size() << " addr=" << &MLC.symtab_command_data.symoff << "\n";
         MLC.symtab_command_data.symoff = Offset;
+        MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
         Offset += NListSize * MLC.symtab_command_data.nsyms;
         MLC.symtab_command_data.stroff = Offset;
         Offset += MLC.symtab_command_data.strsize;
         break;
       case MachO::LC_DYSYMTAB:
+        // FIXME:
+        errs() <<"LC_DYSYMTAB\n";
         MLC.dysymtab_command_data.tocoff = 0;
+        MLC.dysymtab_command_data.ntoc = 0;
         MLC.dysymtab_command_data.modtaboff = 0;
+        MLC.dysymtab_command_data.nmodtab = 0;
         MLC.dysymtab_command_data.extrefsymoff = 0;
         MLC.dysymtab_command_data.nextrefsyms = 0;
         MLC.dysymtab_command_data.indirectsymoff = 0;
+        MLC.dysymtab_command_data.nindirectsyms = 0;
         MLC.dysymtab_command_data.extreloff = 0;
+        MLC.dysymtab_command_data.nextrel = 0;
         MLC.dysymtab_command_data.locreloff = 0;
+        MLC.dysymtab_command_data.nlocrel = 0;
         break;
       case MachO::LC_SEGMENT_64:
         // Do nothing.
@@ -480,6 +517,7 @@ Error MachOWriter::updateOffsets() {
 }
 
 Error MachOWriter::finalize() {
+  errs() << "prev cmdsize: " << loadCommandsSize() << "\n";
   updateLoadCommandsSize();
 
   if (auto E = updateOffsets())

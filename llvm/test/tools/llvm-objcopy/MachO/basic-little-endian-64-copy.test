@@ -1,6 +1,6 @@
 # RUN: yaml2obj %s > %t
 # RUN: llvm-objcopy %t %t2
-# RUN: cmp %t %t2
+# RUN: llvm-readobj --sections %t2 | FileCheck %s
 
 --- !mach-o
 IsLittleEndian:  true
@@ -122,3 +122,77 @@ LinkEditData:
     - ___absvdi2
     - ''
 ...
+
+# CHECK: Format: Mach-O 64-bit x86-64
+# CHECK: Arch: x86_64
+# CHECK: AddressSize: 64bit
+
+# CHECK:      Index: 0
+# CHECK-NEXT: Name: __text (5F 5F 74 65 78 74 00 00 00 00 00 00 00 00 00 00)
+# CHECK-NEXT: Segment: __TEXT (5F 5F 54 45 58 54 00 00 00 00 00 00 00 00 00 00)
+# CHECK-NEXT: Address: 0x0
+# CHECK-NEXT: Size: 0x5D
+# CHECK-NEXT: Offset: 544
+# CHECK-NEXT: Alignment: 4
+# CHECK-NEXT: RelocationOffset: 0x310
+# CHECK-NEXT: RelocationCount: 3
+# CHECK-NEXT: Type: 0x0
+# CHECK-NEXT: Attributes [ (0x800004)
+# CHECK-NEXT:   PureInstructions (0x800000)
+# CHECK-NEXT:   SomeInstructions (0x4)
+# CHECK-NEXT: ]
+# CHECK-NEXT: Reserved1: 0x0
+# CHECK-NEXT: Reserved2: 0x0
+# CHECK-NEXT: Reserved3: 0x0
+
+# CHECK:      Index: 1
+# CHECK-NEXT: Name: __cstring (5F 5F 63 73 74 72 69 6E 67 00 00 00 00 00 00 00)
+# CHECK-NEXT: Segment: __TEXT (5F 5F 54 45 58 54 00 00 00 00 00 00 00 00 00 00)
+# CHECK-NEXT: Address: 0x5D
+# CHECK-NEXT: Size: 0x30
+# CHECK-NEXT: Offset: 637
+# CHECK-NEXT: Alignment: 0
+# CHECK-NEXT: RelocationOffset: 0x0
+# CHECK-NEXT: RelocationCount: 0
+# CHECK-NEXT: Type: ExtReloc (0x2)
+# CHECK-NEXT: Attributes [ (0x0)
+# CHECK-NEXT: ]
+# CHECK-NEXT: Reserved1: 0x0
+# CHECK-NEXT: Reserved2: 0x0
+# CHECK-NEXT: Reserved3: 0x0
+
+# CHECK:      Index: 2
+# CHECK-NEXT: Name: __compact_unwind (5F 5F 63 6F 6D 70 61 63 74 5F 75 6E 77 69 6E 64)
+# CHECK-NEXT: Segment: __LD (5F 5F 4C 44 00 00 00 00 00 00 00 00 00 00 00 00)
+# CHECK-NEXT: Address: 0x90
+# CHECK-NEXT: Size: 0x20
+# CHECK-NEXT: Offset: 688
+# CHECK-NEXT: Alignment: 3
+# CHECK-NEXT: RelocationOffset: 0x328
+# CHECK-NEXT: RelocationCount: 1
+# CHECK-NEXT: Type: 0x0
+# CHECK-NEXT: Attributes [ (0x20000)
+# CHECK-NEXT:   Debug (0x20000)
+# CHECK-NEXT: ]
+# CHECK-NEXT: Reserved1: 0x0
+# CHECK-NEXT: Reserved2: 0x0
+# CHECK-NEXT: Reserved3: 0x0
+
+# CHECK:      Index: 3
+# CHECK-NEXT: Name: __eh_frame (5F 5F 65 68 5F 66 72 61 6D 65 00 00 00 00 00 00)
+# CHECK-NEXT: Segment: __TEXT (5F 5F 54 45 58 54 00 00 00 00 00 00 00 00 00 00)
+# CHECK-NEXT: Address: 0xB0
+# CHECK-NEXT: Size: 0x40
+# CHECK-NEXT: Offset: 720
+# CHECK-NEXT: Alignment: 3
+# CHECK-NEXT: RelocationOffset: 0x0
+# CHECK-NEXT: RelocationCount: 0
+# CHECK-NEXT: Type: 0xB
+# CHECK-NEXT: Attributes [ (0x680000)
+# CHECK-NEXT:   LiveSupport (0x80000)
+# CHECK-NEXT:   NoTOC (0x400000)
+# CHECK-NEXT:   StripStaticSyms (0x200000)
+# CHECK-NEXT: ]
+# CHECK-NEXT: Reserved1: 0x0
+# CHECK-NEXT: Reserved2: 0x0
+# CHECK-NEXT: Reserved3: 0x0

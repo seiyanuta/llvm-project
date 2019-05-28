@@ -463,6 +463,7 @@ static Error checkDysymtabCommand(const MachOObjectFile &Obj,
     return malformedError("LC_DYSYMTAB command " + Twine(LoadCommandIndex) +
                           " has incorrect cmdsize");
   uint64_t FileSize = Obj.getData().size();
+  errs() << "tocoff: " << Dysymtab.tocoff << "\n";
   if (Dysymtab.tocoff > FileSize)
     return malformedError("tocoff field of LC_DYSYMTAB command " +
                           Twine(LoadCommandIndex) + " extends past the end of "

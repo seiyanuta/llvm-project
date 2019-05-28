@@ -476,15 +476,15 @@ Error MachOWriter::updateOffsets() {
         Offset += MLC.symtab_command_data.strsize;
         break;
       case MachO::LC_DYSYMTAB:
-        // FIXME:
+        // TODO: Support dynamic libraries.
         break;
       case MachO::LC_SEGMENT_64:
+      case MachO::LC_VERSION_MIN_MACOSX:
         // Do nothing.
         break;
       default:
         // Abort if it's unsupported to prevent corrupting the object.
-        break;
-        // TODO: return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d)", cmd);
+        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d)", cmd);
     }
   }
 

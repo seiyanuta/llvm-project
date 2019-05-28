@@ -461,14 +461,12 @@ Error MachOWriter::updateOffsets() {
   }
 
   // Tail stuff.
-  errs() << "Tail start: " << Offset << "\n";
   auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
     switch (cmd) {
       case MachO::LC_SYMTAB:
-        errs() << "Updating symtab: " << Offset << ", size=" << NListSize * O.SymTable.NameList.size() << " addr=" << &MLC.symtab_command_data.symoff << "\n";
         MLC.symtab_command_data.symoff = Offset;
         MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
         Offset += NListSize * MLC.symtab_command_data.nsyms;
@@ -480,10 +478,11 @@ Error MachOWriter::updateOffsets() {
         break;
       case MachO::LC_SEGMENT_64:
       case MachO::LC_VERSION_MIN_MACOSX:
-        // Do nothing.
+      case MachO::LC_BUILD_VERSION:
+        // Nothing to update.
         break;
       default:
-        // Abort if it's unsupported to prevent corrupting the object.
+        // Abort if it's unsupported in order to prevent corrupting the object.
         return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d)", cmd);
     }
   }

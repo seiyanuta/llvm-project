@@ -424,21 +424,21 @@ Error MachOWriter::updateOffsets() {
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          auto PrevOffset = Offset;
-          if (Sec.Align)
-            Offset = alignTo(Offset, 1 << Sec.Align);
-          Sec.Offset = Offset; // TODO: alignment
+          auto PaddingSize = OffsetToAlignment(Offset, 1 << Sec.Align);
+          Offset += PaddingSize;
+          Sec.Offset = Offset;
           Offset += Sec.Size;
+
           Sec.NReloc = Sec.Relocations.size();
-          SegSize += Offset - PrevOffset; // FIXME: relocations?
+          SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
         }
-        // FIXME:
-        MLC.segment_command_64_data.filesize = SegSize;
 
         // Vmsize can be larger than the filesize. The loader guarantees that the area
         // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
         // segment for example.
-        MLC.segment_command_64_data.vmsize = std::max(MLC.segment_command_64_data.vmsize, static_cast<uint64_t>(SegSize)); // TODO:
+        // TODO:
+        MLC.segment_command_64_data.vmsize = std::max(MLC.segment_command_64_data.vmsize, static_cast<uint64_t>(SegSize));
+        MLC.segment_command_64_data.filesize = SegSize;
       break;
     }
   }

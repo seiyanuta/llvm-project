@@ -477,19 +477,6 @@ Error MachOWriter::updateOffsets() {
         break;
       case MachO::LC_DYSYMTAB:
         // FIXME:
-        errs() <<"LC_DYSYMTAB\n";
-        MLC.dysymtab_command_data.tocoff = 0;
-        MLC.dysymtab_command_data.ntoc = 0;
-        MLC.dysymtab_command_data.modtaboff = 0;
-        MLC.dysymtab_command_data.nmodtab = 0;
-        MLC.dysymtab_command_data.extrefsymoff = 0;
-        MLC.dysymtab_command_data.nextrefsyms = 0;
-        MLC.dysymtab_command_data.indirectsymoff = 0;
-        MLC.dysymtab_command_data.nindirectsyms = 0;
-        MLC.dysymtab_command_data.extreloff = 0;
-        MLC.dysymtab_command_data.nextrel = 0;
-        MLC.dysymtab_command_data.locreloff = 0;
-        MLC.dysymtab_command_data.nlocrel = 0;
         break;
       case MachO::LC_SEGMENT_64:
         // Do nothing.

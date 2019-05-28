@@ -449,8 +449,8 @@ Error MachOWriter::updateOffsets() {
           Sec.NReloc = Sec.Relocations.size();
           SegSize += Sec.Size + sizeof(MachO::any_relocation_info) * Sec.NReloc;
         }
-        MLC.segment_command_64_data.filesize = SegSize;
-        MLC.segment_command_64_data.vmsize = SegSize; // TODO:
+        // MLC.segment_command_64_data.filesize = SegSize;
+        //MLC.segment_command_64_data.vmsize = SegSize; // TODO:
       break;
     }
   }

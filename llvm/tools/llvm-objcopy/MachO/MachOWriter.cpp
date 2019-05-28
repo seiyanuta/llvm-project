@@ -172,22 +172,6 @@ void MachOWriter::writeLoadCommands() {
           Begin += sizeof(MachO::section_64);
         }
         continue;
-      case MachO::LC_SYMTAB:
-        // FIXME: delete me
-        errs() << "LC_SYMTAB: " << MLC.symtab_command_data.symoff << " addr=" << &MLC.symtab_command_data.symoff << "\n";
-        if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(MLC.symtab_command_data);
-        memcpy(Begin, &MLC.dysymtab_command_data, sizeof(MachO::symtab_command));
-        Begin += sizeof(MachO::symtab_command);
-        continue;
-      case MachO::LC_DYSYMTAB:
-        // FIXME: delete me
-        errs() << "LC_DYSYM " << MLC.dysymtab_command_data.nextrefsyms << "\n";
-        if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(MLC.dysymtab_command_data);
-        memcpy(Begin, &MLC.dysymtab_command_data, sizeof(MachO::dysymtab_command));
-        Begin += sizeof(MachO::dysymtab_command);
-        continue;
     }
 
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
@@ -409,7 +393,6 @@ void MachOWriter::updateLoadCommandsSize() {
     switch (cmd) {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct) \
   case MachO::LCName:                                  \
-    errs() << "lc size: " << sizeof(MachO::LCStruct) << "\n"; \
     Size += sizeof(MachO::LCStruct);                   \
     break;
 #include "llvm/BinaryFormat/MachO.def"
@@ -451,7 +434,11 @@ Error MachOWriter::updateOffsets() {
         }
         // FIXME:
         MLC.segment_command_64_data.filesize = SegSize;
-        MLC.segment_command_64_data.vmsize = SegSize; // TODO:
+
+        // Vmsize can be larger than the filesize. The loader guarantees that the area
+        // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
+        // segment for example.
+        MLC.segment_command_64_data.vmsize = std::max(MLC.segment_command_64_data.vmsize, static_cast<uint64_t>(SegSize)); // TODO:
       break;
     }
   }

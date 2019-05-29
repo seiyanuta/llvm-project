@@ -454,14 +454,12 @@ Error MachOWriter::updateOffsets() {
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
       outs() <<  "Align: " << (1 << LC.Sections.front().Align) << ", Offset:" << alignTo(Offset, 1 << LC.Sections.front().Align) << "\n";
-        if (!LC.Sections.empty())
-          Offset = alignTo(Offset, 1 << LC.Sections.front().Align);
-
+        Offset = alignTo(Offset, 8);
         MLC.segment_command_data.fileoff = Offset;
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          auto PaddingSize = OffsetToAlignment(Offset, 1 << Sec.Align);
+          auto PaddingSize = OffsetToAlignment(Offset, std::min(8, 1 << Sec.Align)); // FIXME:
           Offset += PaddingSize;
           Sec.Offset = Offset;
           Offset += Sec.Size;
@@ -482,17 +480,20 @@ Error MachOWriter::updateOffsets() {
         outs() << "fileoff: " << MLC.segment_command_data.fileoff <<  "\n";
       break;
       case MachO::LC_SEGMENT_64:
+        outs() <<  "Align: " << (1 << LC.Sections.front().Align) << ", Offset:" << alignTo(Offset, 1 << LC.Sections.front().Align) << "\n";
+        Offset = alignTo(Offset, 8);
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
         for (auto &Sec : LC.Sections) {
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          auto PaddingSize = OffsetToAlignment(Offset, 1 << Sec.Align);
+          auto PaddingSize = OffsetToAlignment(Offset, std::min(8, 1 << Sec.Align)); // FIXME:
           Offset += PaddingSize;
           Sec.Offset = Offset;
           Offset += Sec.Size;
 
           Sec.NReloc = Sec.Relocations.size();
           SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
+          outs() << "padding: " << PaddingSize << "\n";
         }
 
         // Vmsize can be larger than the filesize. The loader guarantees that the area

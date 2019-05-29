@@ -540,17 +540,37 @@ Error MachOWriter::updateOffsets() {
         Offset += MLC.symtab_command_data.strsize;
         break;
       case MachO::LC_DYSYMTAB:
+        if (MLC.dysymtab_command_data.ntoc != 0 ||
+        MLC.dysymtab_command_data.nmodtab != 0 ||
+        MLC.dysymtab_command_data.nextrefsyms != 0 ||
+        MLC.dysymtab_command_data.nindirectsyms != 0 ||
+        MLC.dysymtab_command_data.nextrel != 0 ||
+        MLC.dysymtab_command_data.nlocrel != 0
+        )
+          // TODO: Support dynamic libraries.
+          return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
+          
+        // We don't have to update offsets for now if there are no entries in the tables.
+        break;
+      case MachO::LC_DYLD_INFO_ONLY:
+      case MachO::LC_FUNCTION_STARTS:
+      case MachO::LC_DATA_IN_CODE:
         // TODO: Support dynamic libraries.
+        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
         break;
       case MachO::LC_SEGMENT:
       case MachO::LC_SEGMENT_64:
       case MachO::LC_VERSION_MIN_MACOSX:
       case MachO::LC_BUILD_VERSION:
+      case MachO::LC_ID_DYLIB:
+      case MachO::LC_LOAD_DYLIB:
+      case MachO::LC_UUID:
+      case MachO::LC_SOURCE_VERSION:
         // Nothing to update.
         break;
       default:
         // Abort if it's unsupported in order to prevent corrupting the object.
-        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=%d)", cmd);
+        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
     }
   }
 

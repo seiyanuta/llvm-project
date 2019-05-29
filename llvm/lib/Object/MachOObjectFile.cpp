@@ -463,7 +463,6 @@ static Error checkDysymtabCommand(const MachOObjectFile &Obj,
     return malformedError("LC_DYSYMTAB command " + Twine(LoadCommandIndex) +
                           " has incorrect cmdsize");
   uint64_t FileSize = Obj.getData().size();
-  errs() << "tocoff: " << Dysymtab.tocoff << "\n";
   if (Dysymtab.tocoff > FileSize)
     return malformedError("tocoff field of LC_DYSYMTAB command " +
                           Twine(LoadCommandIndex) + " extends past the end of "
@@ -513,7 +512,6 @@ static Error checkDysymtabCommand(const MachOObjectFile &Obj,
   BigSize = Dysymtab.nextrefsyms;
   BigSize *= sizeof(MachO::dylib_reference);
   BigSize += Dysymtab.extrefsymoff;
-  errs() << BigSize << ", " << FileSize << " " << (BigSize > FileSize) << ": " << Dysymtab.extrefsymoff << " " << Dysymtab.nextrefsyms << "\n";
   if (BigSize > FileSize)
     return malformedError("extrefsymoff field plus nextrefsyms field times "
                           "sizeof(struct dylib_reference) of LC_DYSYMTAB "

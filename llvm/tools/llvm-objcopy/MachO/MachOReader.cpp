@@ -41,7 +41,6 @@ Section constructSectionCommon(SectionType Sec) {
   Section S;
   S.Sectname = StringRef(Sec.sectname, strlenOrMaxLen(Sec.sectname, 16));
   S.Segname = StringRef(Sec.segname, strlenOrMaxLen(Sec.segname, 16));
-  S.CannonicalName = (Twine(S.Segname) + "," + S.Sectname).str();
   S.Addr = Sec.addr;
   S.Size = Sec.size;
   S.Offset = Sec.offset;

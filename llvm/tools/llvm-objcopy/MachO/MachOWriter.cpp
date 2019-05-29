@@ -464,7 +464,6 @@ Error MachOWriter::updateOffsets() {
           Sec.NReloc = Sec.Relocations.size();
           StartAddress += PaddingSize + Sec.Size;
           SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-          outs() << Sec.CannonicalName << ", padding: " << PaddingSize << "\n";
         }
 
         Offset += StartAddress;
@@ -490,7 +489,6 @@ Error MachOWriter::updateOffsets() {
           Sec.NReloc = Sec.Relocations.size();
           StartAddress += PaddingSize + Sec.Size;
           SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-          outs() << Sec.CannonicalName << ", padding: " << PaddingSize << "\n";
         }
 
         Offset += StartAddress;

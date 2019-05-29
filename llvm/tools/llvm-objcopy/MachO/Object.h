@@ -36,11 +36,6 @@ struct MachHeader {
 struct Section {
   std::string Sectname;
   std::string Segname;
-
-  // The cannonical name (coined by me) is a string which represents the pair of
-  // the segment name and the section name written as "<segment>,<section>".
-  std::string CannonicalName;
-
   uint64_t Addr;
   uint64_t Size;
   uint32_t Offset;

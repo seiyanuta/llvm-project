@@ -641,7 +641,6 @@ void MachObjectWriter::computeSectionAddresses(const MCAssembler &Asm,
                                                const MCAsmLayout &Layout) {
   uint64_t StartAddress = 0;
   for (const MCSection *Sec : Layout.getSectionOrder()) {
-    outs() << ", StartAddress: " << StartAddress << ", Align: "<< Sec->getAlignment() << "\n";
     StartAddress = alignTo(StartAddress, Sec->getAlignment());
     SectionAddress[Sec] = StartAddress;
     StartAddress += Layout.getSectionAddressSize(Sec);
@@ -850,7 +849,6 @@ uint64_t MachObjectWriter::writeObject(MCAssembler &Asm,
     const auto &Sec = cast<MCSectionMachO>(Section);
     std::vector<RelAndSymbol> &Relocs = Relocations[&Sec];
     unsigned NumRelocs = Relocs.size();
-    outs() << "SectionDataStart: " << SectionDataStart << ", Inc: " << getSectionAddress(&Sec) << ", New: " << SectionDataStart + getSectionAddress(&Sec) << "\n";
     uint64_t SectionStart = SectionDataStart + getSectionAddress(&Sec);
     unsigned Flags = Sec.getTypeAndAttributes();
     if (Sec.hasInstructions())

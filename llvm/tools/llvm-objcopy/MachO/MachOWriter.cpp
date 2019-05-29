@@ -481,21 +481,21 @@ Error MachOWriter::updateOffsets() {
         outs() << "fileoff: " << MLC.segment_command_data.fileoff <<  "\n";
       break;
       case MachO::LC_SEGMENT_64:
-        outs() <<  "Align: " << (1 << LC.Sections.front().Align) << ", Offset:" << alignTo(Offset, 1 << LC.Sections.front().Align) << "\n";
-        Offset = alignTo(Offset, 8);
+        Offset = alignTo(Offset, 4); // TODO:
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
+        StartAddress = 0;
         for (auto &Sec : LC.Sections) {
+          auto PaddingSize = OffsetToAlignment(StartAddress, 1 << Sec.Align); // FIXME:
+          Sec.Offset = Offset + StartAddress + PaddingSize;
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          auto PaddingSize = OffsetToAlignment(Offset, std::min(8, 1 << Sec.Align)); // FIXME:
-          Offset += PaddingSize;
-          Sec.Offset = Offset;
-          Offset += Sec.Size;
-
           Sec.NReloc = Sec.Relocations.size();
+          StartAddress += PaddingSize + Sec.Size;
           SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-          outs() << "padding: " << PaddingSize << "\n";
+          outs() << Sec.CannonicalName << ", padding: " << PaddingSize << "\n";
         }
+
+        Offset += StartAddress;
 
         // Vmsize can be larger than the filesize. The loader guarantees that the area
         // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
@@ -503,6 +503,9 @@ Error MachOWriter::updateOffsets() {
         // TODO:
         MLC.segment_command_64_data.vmsize = std::max(MLC.segment_command_64_data.vmsize, static_cast<uint64_t>(SegSize));
         MLC.segment_command_64_data.filesize = SegSize;
+        outs() << "vmsize: " << MLC.segment_command_64_data.vmsize << "\n";
+        outs() << "filesize: " << MLC.segment_command_64_data.filesize << "\n";
+        outs() << "fileoff: " << MLC.segment_command_64_data.fileoff <<  "\n";
       break;
     }
   }

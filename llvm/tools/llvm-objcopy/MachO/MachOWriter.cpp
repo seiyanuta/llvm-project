@@ -454,7 +454,6 @@ Error MachOWriter::updateOffsets() {
     uint64_t StartAddress;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
-        Offset = alignTo(Offset, 4); // TODO:
         MLC.segment_command_data.fileoff = Offset;
         SegSize = 0;
         StartAddress = 0;
@@ -481,7 +480,6 @@ Error MachOWriter::updateOffsets() {
         outs() << "fileoff: " << MLC.segment_command_data.fileoff <<  "\n";
       break;
       case MachO::LC_SEGMENT_64:
-        Offset = alignTo(Offset, 4); // TODO:
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
         StartAddress = 0;

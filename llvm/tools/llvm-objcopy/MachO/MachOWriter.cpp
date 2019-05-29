@@ -128,7 +128,7 @@ void MachOWriter::writeHeader() {
   memcpy(B.getBufferStart(), &Header, HeaderSize);
 }
 
-static void copyFixedSizedString(char *Dest, StringRef Src, size_t DestLen) {
+static void copyStringWithPadding(char *Dest, StringRef Src, size_t DestLen) {
   size_t CopyLen = std::min(Src.size(), DestLen);
   memcpy(reinterpret_cast<void *>(Dest), Src.data(), CopyLen);
   memset(reinterpret_cast<void *>(Dest + CopyLen), '\0', DestLen - CopyLen);
@@ -153,8 +153,8 @@ void MachOWriter::writeLoadCommands() {
 
         for (auto &Sec : LC.Sections) {
           struct MachO::section Temp;
-          copyFixedSizedString(Temp.sectname, Sec.Sectname, 16);
-          copyFixedSizedString(Temp.segname, Sec.Segname, 16);
+          copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
+          copyStringWithPadding(Temp.segname, Sec.Segname, 16);
           Temp.addr = Sec.Addr;
           Temp.size = Sec.Size;
           Temp.offset = Sec.Offset;
@@ -183,8 +183,8 @@ void MachOWriter::writeLoadCommands() {
 
         for (auto &Sec : LC.Sections) {
           struct MachO::section_64 Temp;
-          copyFixedSizedString(Temp.sectname, Sec.Sectname, 16);
-          copyFixedSizedString(Temp.segname, Sec.Segname, 16);
+          copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
+          copyStringWithPadding(Temp.segname, Sec.Segname, 16);
           Temp.addr = Sec.Addr;
           Temp.size = Sec.Size;
           Temp.offset = Sec.Offset;
@@ -451,23 +451,24 @@ Error MachOWriter::updateOffsets() {
   // Section data.
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
+    uint64_t StartAddress;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
-      outs() <<  "Align: " << (1 << LC.Sections.front().Align) << ", Offset:" << alignTo(Offset, 1 << LC.Sections.front().Align) << "\n";
-        Offset = alignTo(Offset, 8);
+        Offset = alignTo(Offset, 4); // TODO:
         MLC.segment_command_data.fileoff = Offset;
         SegSize = 0;
+        StartAddress = 0;
         for (auto &Sec : LC.Sections) {
+          auto PaddingSize = OffsetToAlignment(StartAddress, 1 << Sec.Align); // FIXME:
+          Sec.Offset = Offset + StartAddress + PaddingSize;
           Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          auto PaddingSize = OffsetToAlignment(Offset, std::min(8, 1 << Sec.Align)); // FIXME:
-          Offset += PaddingSize;
-          Sec.Offset = Offset;
-          Offset += Sec.Size;
-
           Sec.NReloc = Sec.Relocations.size();
+          StartAddress += PaddingSize + Sec.Size;
           SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-          outs() << "padding: " << PaddingSize << "\n";
+          outs() << Sec.CannonicalName << ", padding: " << PaddingSize << "\n";
         }
+
+        Offset += StartAddress;
 
         // Vmsize can be larger than the filesize. The loader guarantees that the area
         // beyond the filesize is initialized with zeros. It is used by __PAGEZERO

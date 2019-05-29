@@ -141,6 +141,36 @@ void MachOWriter::writeLoadCommands() {
     // Construct new load command.
     MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
+      case MachO::LC_SEGMENT:
+        errs() << MLC.segment_command_data.cmdsize << "\n";
+        MLC.segment_command_data.nsects = LC.Sections.size();
+        MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
+
+        if (IsLittleEndian != sys::IsLittleEndianHost)
+          MachO::swapStruct(MLC.segment_command_data);
+        memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
+        Begin += sizeof(MachO::segment_command);
+
+        for (auto &Sec : LC.Sections) {
+          struct MachO::section Temp;
+          copyFixedSizedString(Temp.sectname, Sec.Sectname, 16);
+          copyFixedSizedString(Temp.segname, Sec.Segname, 16);
+          Temp.addr = Sec.Addr;
+          Temp.size = Sec.Size;
+          Temp.offset = Sec.Offset;
+          Temp.align = Sec.Align;
+          Temp.reloff = Sec.RelOff;
+          Temp.nreloc = Sec.NReloc;
+          Temp.flags = Sec.Flags;
+          Temp.reserved1 = Sec.Reserved1;
+          Temp.reserved2 = Sec.Reserved2;
+
+          if (IsLittleEndian != sys::IsLittleEndianHost)
+            MachO::swapStruct(Temp);
+          memcpy(Begin, &Temp, sizeof(MachO::section));
+          Begin += sizeof(MachO::section);
+        }
+        continue;
       case MachO::LC_SEGMENT_64:
         errs() << MLC.segment_command_64_data.cmdsize << "\n";
         MLC.segment_command_64_data.nsects = LC.Sections.size();
@@ -385,6 +415,9 @@ void MachOWriter::updateLoadCommandsSize() {
     auto cmd = MLC.load_command_data.cmd;
 
     switch (cmd) {
+      case MachO::LC_SEGMENT:
+        Size += sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
+        continue;
       case MachO::LC_SEGMENT_64:
         Size += sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
         continue;
@@ -419,6 +452,35 @@ Error MachOWriter::updateOffsets() {
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
+      case MachO::LC_SEGMENT:
+      outs() <<  "Align: " << (1 << LC.Sections.front().Align) << ", Offset:" << alignTo(Offset, 1 << LC.Sections.front().Align) << "\n";
+        if (!LC.Sections.empty())
+          Offset = alignTo(Offset, 1 << LC.Sections.front().Align);
+
+        MLC.segment_command_data.fileoff = Offset;
+        SegSize = 0;
+        for (auto &Sec : LC.Sections) {
+          Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
+          auto PaddingSize = OffsetToAlignment(Offset, 1 << Sec.Align);
+          Offset += PaddingSize;
+          Sec.Offset = Offset;
+          Offset += Sec.Size;
+
+          Sec.NReloc = Sec.Relocations.size();
+          SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
+          outs() << "padding: " << PaddingSize << "\n";
+        }
+
+        // Vmsize can be larger than the filesize. The loader guarantees that the area
+        // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
+        // segment for example.
+        // TODO:
+        MLC.segment_command_data.vmsize = std::max(MLC.segment_command_data.vmsize, static_cast<uint32_t>(SegSize));
+        MLC.segment_command_data.filesize = SegSize;
+        outs() << "vmsize: " << MLC.segment_command_data.vmsize << "\n";
+        outs() << "filesize: " << MLC.segment_command_data.filesize << "\n";
+        outs() << "fileoff: " << MLC.segment_command_data.fileoff <<  "\n";
+      break;
       case MachO::LC_SEGMENT_64:
         MLC.segment_command_64_data.fileoff = Offset;
         SegSize = 0;
@@ -447,6 +509,7 @@ Error MachOWriter::updateOffsets() {
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
+      case MachO::LC_SEGMENT:
       case MachO::LC_SEGMENT_64:
         for (auto &Sec : LC.Sections) {
           auto RelSize = sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
@@ -476,6 +539,7 @@ Error MachOWriter::updateOffsets() {
       case MachO::LC_DYSYMTAB:
         // TODO: Support dynamic libraries.
         break;
+      case MachO::LC_SEGMENT:
       case MachO::LC_SEGMENT_64:
       case MachO::LC_VERSION_MIN_MACOSX:
       case MachO::LC_BUILD_VERSION:

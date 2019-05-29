@@ -30,7 +30,7 @@ LoadCommands:
         addr:            0x0000000000000000
         size:            61
         offset:          0x00000198
-        align:           4
+        align:           3
         reloff:          0x00000250
         nreloc:          1
         flags:           0x80000400

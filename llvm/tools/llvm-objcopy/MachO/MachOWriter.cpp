@@ -436,95 +436,53 @@ void MachOWriter::updateLoadCommandsSize() {
   O.Header.SizeOfCmds = Size;
 }
 
-// Updates offset fields in load commands and sections since they would be
-// corrupted if some sections are added, removed, or modified.
-Error MachOWriter::updateOffsets() {
-  // Compute and update the size of load commands.
+// Updates offset and size fields in load commands and sections since they could be modified.
+Error MachOWriter::layout() {
   auto SizeOfCmds = loadCommandsSize();
+  auto Offset = headerSize() + SizeOfCmds;
   O.Header.NCmds = O.LoadCommands.size();
   O.Header.SizeOfCmds = SizeOfCmds;
 
-  auto Offset = headerSize() + SizeOfCmds;
-  errs() << "SizeOfCmds: " << (SizeOfCmds) << "\n";
-  errs() << "Offset:     " << (Offset) << "\n";
-  size_t SegSize;
-  // Section data.
+  // Lay out sections.
   for (auto &LC : O.LoadCommands) {
+    uint64_t SegSize = 0;
+    uint64_t FileOff = Offset;
+    uint64_t OffsetInSegment = 0;
+    // FIXME: handle __ZERO
+    for (auto &Sec : LC.Sections) {
+      auto PaddingSize = OffsetToAlignment(OffsetInSegment, pow(2, Sec.Align));
+      Sec.Offset = Offset + OffsetInSegment + PaddingSize;
+      Sec.Size = Sec.Content.size();
+      OffsetInSegment += PaddingSize + Sec.Size;
+      SegSize += Sec.Size + PaddingSize;
+    }
+
     auto &MLC = LC.MachOLoadCommand;
-    uint64_t StartAddress;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
-        MLC.segment_command_data.fileoff = Offset;
-        SegSize = 0;
-        StartAddress = 0;
-        for (auto &Sec : LC.Sections) {
-          auto PaddingSize = OffsetToAlignment(StartAddress, 1 << Sec.Align); // FIXME:
-          Sec.Offset = Offset + StartAddress + PaddingSize;
-          Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          Sec.NReloc = Sec.Relocations.size();
-          StartAddress += PaddingSize + Sec.Size;
-          SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-        }
-
-        Offset += StartAddress;
-
-        // Vmsize can be larger than the filesize. The loader guarantees that the area
-        // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
-        // segment for example.
-        // TODO:
-        MLC.segment_command_data.vmsize = std::max(MLC.segment_command_data.vmsize, static_cast<uint32_t>(SegSize));
+        MLC.segment_command_data.fileoff = FileOff;
+        MLC.segment_command_data.vmsize = SegSize;
         MLC.segment_command_data.filesize = SegSize;
-        outs() << "vmsize: " << MLC.segment_command_data.vmsize << "\n";
-        outs() << "filesize: " << MLC.segment_command_data.filesize << "\n";
-        outs() << "fileoff: " << MLC.segment_command_data.fileoff <<  "\n";
-      break;
+        break;
       case MachO::LC_SEGMENT_64:
-        MLC.segment_command_64_data.fileoff = Offset;
-        SegSize = 0;
-        StartAddress = 0;
-        for (auto &Sec : LC.Sections) {
-          auto PaddingSize = OffsetToAlignment(StartAddress, 1 << Sec.Align); // FIXME:
-          Sec.Offset = Offset + StartAddress + PaddingSize;
-          Sec.Size = Sec.Content.size(); // FIXME: is this really the size of contents?
-          Sec.NReloc = Sec.Relocations.size();
-          StartAddress += PaddingSize + Sec.Size;
-          SegSize += Sec.Size + PaddingSize; // FIXME: relocations?
-        }
-
-        Offset += StartAddress;
-
-        // Vmsize can be larger than the filesize. The loader guarantees that the area
-        // beyond the filesize is initialized with zeros. It is used by __PAGEZERO
-        // segment for example.
-        // TODO:
-        MLC.segment_command_64_data.vmsize = std::max(MLC.segment_command_64_data.vmsize, static_cast<uint64_t>(SegSize));
+        MLC.segment_command_64_data.fileoff = FileOff;
+        MLC.segment_command_64_data.vmsize = SegSize;
         MLC.segment_command_64_data.filesize = SegSize;
-        outs() << "vmsize: " << MLC.segment_command_64_data.vmsize << "\n";
-        outs() << "filesize: " << MLC.segment_command_64_data.filesize << "\n";
-        outs() << "fileoff: " << MLC.segment_command_64_data.fileoff <<  "\n";
-      break;
+        break;
     }
+
+    Offset += OffsetInSegment;
   }
 
-  // Relocations.
-  for (auto &LC : O.LoadCommands) {
-    auto &MLC = LC.MachOLoadCommand;
-    switch (MLC.load_command_data.cmd) {
-      case MachO::LC_SEGMENT:
-      case MachO::LC_SEGMENT_64:
-        for (auto &Sec : LC.Sections) {
-          auto RelSize = sizeof(MachO::any_relocation_info) * Sec.Relocations.size();
-          if (RelSize == 0)
-            continue;
-
-          Sec.RelOff = Offset;
-          Offset += RelSize;
-        }
-      break;
+  // Lay out relocations.
+  for (auto &LC : O.LoadCommands)
+    for (auto &Sec : LC.Sections) {
+      Sec.RelOff = Sec.Relocations.empty() ? 0 : Offset;
+      Sec.NReloc = Sec.Relocations.size();
+      Offset += sizeof(MachO::any_relocation_info) * Sec.NReloc;
     }
-  }
 
-  // Tail stuff.
+  // Layout tail stuff.
   auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
@@ -546,7 +504,7 @@ Error MachOWriter::updateOffsets() {
         MLC.dysymtab_command_data.nlocrel != 0
         )
           // TODO: Support dynamic libraries.
-          return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
+          return createStringError(llvm::errc::not_supported, "LC_DYSYMTAB support is incomplete");
           
         // We don't have to update offsets for now if there are no entries in the tables.
         break;
@@ -579,7 +537,7 @@ Error MachOWriter::finalize() {
   errs() << "prev cmdsize: " << loadCommandsSize() << "\n";
   updateLoadCommandsSize();
 
-  if (auto E = updateOffsets())
+  if (auto E = layout())
     return E;
 
   return Error::success();

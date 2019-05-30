@@ -30,7 +30,7 @@ class MachOWriter {
   size_t strTableSize() const;
 
   void updateLoadCommandsSize();
-  Error updateOffsets();
+  Error layout();
 
   void writeHeader();
   void writeLoadCommands();

@@ -445,29 +445,32 @@ Error MachOWriter::layout() {
 
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
-    uint64_t SegSize = 0;
+    uint64_t FileSize = 0;
+    uint64_t VmSize = 0;
     uint64_t FileOff = Offset;
     uint64_t OffsetInSegment = 0;
-    // FIXME: handle __ZERO
     for (auto &Sec : LC.Sections) {
       auto PaddingSize = OffsetToAlignment(OffsetInSegment, pow(2, Sec.Align));
       Sec.Offset = Offset + OffsetInSegment + PaddingSize;
       Sec.Size = Sec.Content.size();
       OffsetInSegment += PaddingSize + Sec.Size;
-      SegSize += Sec.Size + PaddingSize;
+      // TODO: Handle virtual sections.
+      VmSize += Sec.Size + PaddingSize;
+      FileSize += Sec.Size + PaddingSize;
     }
 
+    // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
         MLC.segment_command_data.fileoff = FileOff;
-        MLC.segment_command_data.vmsize = SegSize;
-        MLC.segment_command_data.filesize = SegSize;
+        MLC.segment_command_data.vmsize = VmSize;
+        MLC.segment_command_data.filesize = FileSize;
         break;
       case MachO::LC_SEGMENT_64:
         MLC.segment_command_64_data.fileoff = FileOff;
-        MLC.segment_command_64_data.vmsize = SegSize;
-        MLC.segment_command_64_data.filesize = SegSize;
+        MLC.segment_command_64_data.vmsize = VmSize;
+        MLC.segment_command_64_data.filesize = FileSize;
         break;
     }
 

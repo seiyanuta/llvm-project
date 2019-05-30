@@ -142,10 +142,6 @@ void MachOWriter::writeLoadCommands() {
     MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
-        errs() << MLC.segment_command_data.cmdsize << "\n";
-        MLC.segment_command_data.nsects = LC.Sections.size();
-        MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
-
         if (IsLittleEndian != sys::IsLittleEndianHost)
           MachO::swapStruct(MLC.segment_command_data);
         memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
@@ -172,10 +168,6 @@ void MachOWriter::writeLoadCommands() {
         }
         continue;
       case MachO::LC_SEGMENT_64:
-        errs() << MLC.segment_command_64_data.cmdsize << "\n";
-        MLC.segment_command_64_data.nsects = LC.Sections.size();
-        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
-
         if (IsLittleEndian != sys::IsLittleEndianHost)
           MachO::swapStruct(MLC.segment_command_64_data);
         memcpy(Begin, &MLC.segment_command_64_data, sizeof(MachO::segment_command_64));
@@ -463,11 +455,15 @@ Error MachOWriter::layout() {
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
       case MachO::LC_SEGMENT:
+        MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
+        MLC.segment_command_data.nsects = LC.Sections.size();
         MLC.segment_command_data.fileoff = FileOff;
         MLC.segment_command_data.vmsize = VmSize;
         MLC.segment_command_data.filesize = FileSize;
         break;
       case MachO::LC_SEGMENT_64:
+        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
+        MLC.segment_command_64_data.nsects = LC.Sections.size();
         MLC.segment_command_64_data.fileoff = FileOff;
         MLC.segment_command_64_data.vmsize = VmSize;
         MLC.segment_command_64_data.filesize = FileSize;
@@ -537,7 +533,6 @@ Error MachOWriter::layout() {
 }
 
 Error MachOWriter::finalize() {
-  errs() << "prev cmdsize: " << loadCommandsSize() << "\n";
   updateLoadCommandsSize();
 
   if (auto E = layout())

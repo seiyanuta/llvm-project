@@ -230,6 +230,9 @@ void MachOWriter::writeLoadCommands() {
 void MachOWriter::writeSections() {
   for (const auto &LC : O.LoadCommands)
     for (const auto &Sec : LC.Sections) {
+      if (Sec.isVirtualSection())
+        continue;
+
       assert(Sec.Offset && "Section offset can not be zero");
       assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
       memcpy(B.getBufferStart() + Sec.Offset, Sec.Content.data(),
@@ -428,6 +431,35 @@ void MachOWriter::updateLoadCommandsSize() {
   O.Header.SizeOfCmds = Size;
 }
 
+// Updates the index and the number of local/external/undefined symbols. Here we assume
+// that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table is already sorted by the those types.      
+void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
+  auto nlocalsym = 0;
+  auto Iter = O.SymTable.NameList.begin();
+  auto End = O.SymTable.NameList.end();
+  for (; Iter != End; Iter++) {
+    if (Iter->n_type & (MachO::N_EXT | MachO::N_PEXT))
+      break;
+
+    nlocalsym++;
+  }
+
+  auto nextdefsym = 0;
+  for (; Iter != End; Iter++) {
+    if ((Iter->n_type & MachO::N_TYPE) == MachO::N_UNDF)
+      break;
+
+    nextdefsym++;
+  }
+
+  MLC.dysymtab_command_data.ilocalsym = 0;
+  MLC.dysymtab_command_data.nlocalsym = nlocalsym;
+  MLC.dysymtab_command_data.iextdefsym = nlocalsym;
+  MLC.dysymtab_command_data.nextdefsym = nextdefsym;
+  MLC.dysymtab_command_data.iundefsym = nlocalsym + nextdefsym;
+  MLC.dysymtab_command_data.nundefsym = O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
+}
+
 // Updates offset and size fields in load commands and sections since they could be modified.
 Error MachOWriter::layout() {
   auto SizeOfCmds = loadCommandsSize();
@@ -441,13 +473,15 @@ Error MachOWriter::layout() {
     uint64_t VirtOffsetInSegment = 0;
     uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
-      auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
-      auto VirtPaddingSize = OffsetToAlignment(VirtOffsetInSegment, pow(2, Sec.Align));
-      Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
-      Sec.Size = Sec.Content.size();
-      VirtOffsetInSegment += VirtPaddingSize + Sec.Size;
-      if (!Sec.isVirtualSection())
+      if (!Sec.isVirtualSection()) {
+        auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
+        Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
+        Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;
+      }
+
+      auto VirtPaddingSize = OffsetToAlignment(VirtOffsetInSegment, pow(2, Sec.Align));
+      VirtOffsetInSegment += VirtPaddingSize + Sec.Size;
     }
 
     // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
@@ -493,20 +527,20 @@ Error MachOWriter::layout() {
         MLC.symtab_command_data.stroff = Offset;
         Offset += MLC.symtab_command_data.strsize;
         break;
-      case MachO::LC_DYSYMTAB:
-        // These three fields exist if the object is a shared library.
+      case MachO::LC_DYSYMTAB: {
         if (MLC.dysymtab_command_data.ntoc != 0 ||
             MLC.dysymtab_command_data.nmodtab != 0 ||
-            MLC.dysymtab_command_data.nextrefsyms != 0)
-          return createStringError(llvm::errc::not_supported, "shared libraries are not yet supported");
+            MLC.dysymtab_command_data.nextrefsyms != 0 ||
+            MLC.dysymtab_command_data.nlocrel != 0 ||
+            MLC.dysymtab_command_data.nextrel != 0)
+          return createStringError(llvm::errc::not_supported, "shared library is not yet supported");
       
-        // nlocalsym
-        // nextdefsym
-        // nundefsym
-        // nindirectsyms
-        // nextrel
-        // nlocrel
+        if (MLC.dysymtab_command_data.nindirectsyms != 0)
+          return createStringError(llvm::errc::not_supported, "indirect symbol table is not yet supported");
+
+        updateDysymtab(MLC);
         break;
+      }
       case MachO::LC_SEGMENT:
       case MachO::LC_SEGMENT_64:
       case MachO::LC_VERSION_MIN_MACOSX:

@@ -6,4 +6,8 @@
 # RUN: llvm-objcopy %t.64.o %t.64.copy.o
 # RUN: cmp %t.64.o %t.64.copy.o
 
+# RUN: llvm-mc -assemble -triple x86_64-apple-darwin9 -filetype=obj %p/Inputs/some-symbols.s -o %t.some-symbols.o
+# RUN: llvm-objcopy %t.some-symbols.o %t.some-symbols.copy.o
+# RUN: cmp %t.some-symbols.o %t.some-symbols.copy.o
+
 # REQUIRES: x86-registered-target

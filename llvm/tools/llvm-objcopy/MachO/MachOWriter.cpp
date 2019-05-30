@@ -462,8 +462,8 @@ void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
       O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
 }
 
-// Updates offset and size fields in load commands and sections since they could
-// be modified.
+// Recomputes and updates offset and size fields in load commands and sections
+// since they could be modified.
 Error MachOWriter::layout() {
   auto SizeOfCmds = loadCommandsSize();
   auto Offset = headerSize() + SizeOfCmds;

@@ -49,6 +49,17 @@ struct Section {
 
   StringRef Content;
   std::vector<MachO::any_relocation_info> Relocations;
+
+  MachO::SectionType getType() const {
+    return static_cast<MachO::SectionType>(Flags &
+                                           MachO::SECTION_TYPE);
+  }
+
+  bool isVirtualSection() const {
+    return (getType() == MachO::S_ZEROFILL ||
+            getType() == MachO::S_GB_ZEROFILL ||
+            getType() == MachO::S_THREAD_LOCAL_ZEROFILL);
+  }
 };
 
 struct LoadCommand {

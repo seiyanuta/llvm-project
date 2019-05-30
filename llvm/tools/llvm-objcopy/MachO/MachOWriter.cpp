@@ -437,18 +437,17 @@ Error MachOWriter::layout() {
 
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
-    uint64_t FileSize = 0;
-    uint64_t VmSize = 0;
     uint64_t FileOff = Offset;
-    uint64_t OffsetInSegment = 0;
+    uint64_t VirtOffsetInSegment = 0;
+    uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
-      auto PaddingSize = OffsetToAlignment(OffsetInSegment, pow(2, Sec.Align));
-      Sec.Offset = Offset + OffsetInSegment + PaddingSize;
+      auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
+      auto VirtPaddingSize = OffsetToAlignment(VirtOffsetInSegment, pow(2, Sec.Align));
+      Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
       Sec.Size = Sec.Content.size();
-      OffsetInSegment += PaddingSize + Sec.Size;
-      // TODO: Handle virtual sections.
-      VmSize += Sec.Size + PaddingSize;
-      FileSize += Sec.Size + PaddingSize;
+      VirtOffsetInSegment += VirtPaddingSize + Sec.Size;
+      if (!Sec.isVirtualSection())
+        FileOffsetInSegment += FilePaddingSize + Sec.Size;
     }
 
     // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
@@ -458,19 +457,19 @@ Error MachOWriter::layout() {
         MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
         MLC.segment_command_data.nsects = LC.Sections.size();
         MLC.segment_command_data.fileoff = FileOff;
-        MLC.segment_command_data.vmsize = VmSize;
-        MLC.segment_command_data.filesize = FileSize;
+        MLC.segment_command_data.vmsize = VirtOffsetInSegment;
+        MLC.segment_command_data.filesize = FileOffsetInSegment;
         break;
       case MachO::LC_SEGMENT_64:
         MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
         MLC.segment_command_64_data.nsects = LC.Sections.size();
         MLC.segment_command_64_data.fileoff = FileOff;
-        MLC.segment_command_64_data.vmsize = VmSize;
-        MLC.segment_command_64_data.filesize = FileSize;
+        MLC.segment_command_64_data.vmsize = VirtOffsetInSegment;
+        MLC.segment_command_64_data.filesize = FileOffsetInSegment;
         break;
     }
 
-    Offset += OffsetInSegment;
+    Offset += FileOffsetInSegment;
   }
 
   // Lay out relocations.
@@ -495,23 +494,18 @@ Error MachOWriter::layout() {
         Offset += MLC.symtab_command_data.strsize;
         break;
       case MachO::LC_DYSYMTAB:
+        // These three fields exist if the object is a shared library.
         if (MLC.dysymtab_command_data.ntoc != 0 ||
-        MLC.dysymtab_command_data.nmodtab != 0 ||
-        MLC.dysymtab_command_data.nextrefsyms != 0 ||
-        MLC.dysymtab_command_data.nindirectsyms != 0 ||
-        MLC.dysymtab_command_data.nextrel != 0 ||
-        MLC.dysymtab_command_data.nlocrel != 0
-        )
-          // TODO: Support dynamic libraries.
-          return createStringError(llvm::errc::not_supported, "LC_DYSYMTAB support is incomplete");
-          
-        // We don't have to update offsets for now if there are no entries in the tables.
-        break;
-      case MachO::LC_DYLD_INFO_ONLY:
-      case MachO::LC_FUNCTION_STARTS:
-      case MachO::LC_DATA_IN_CODE:
-        // TODO: Support dynamic libraries.
-        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
+            MLC.dysymtab_command_data.nmodtab != 0 ||
+            MLC.dysymtab_command_data.nextrefsyms != 0)
+          return createStringError(llvm::errc::not_supported, "shared libraries are not yet supported");
+      
+        // nlocalsym
+        // nextdefsym
+        // nundefsym
+        // nindirectsyms
+        // nextrel
+        // nlocrel
         break;
       case MachO::LC_SEGMENT:
       case MachO::LC_SEGMENT_64:

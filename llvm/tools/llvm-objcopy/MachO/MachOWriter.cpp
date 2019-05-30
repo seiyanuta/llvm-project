@@ -141,59 +141,60 @@ void MachOWriter::writeLoadCommands() {
     // Construct new load command.
     MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
-      case MachO::LC_SEGMENT:
+    case MachO::LC_SEGMENT:
+      if (IsLittleEndian != sys::IsLittleEndianHost)
+        MachO::swapStruct(MLC.segment_command_data);
+      memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
+      Begin += sizeof(MachO::segment_command);
+
+      for (auto &Sec : LC.Sections) {
+        struct MachO::section Temp;
+        copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
+        copyStringWithPadding(Temp.segname, Sec.Segname, 16);
+        Temp.addr = Sec.Addr;
+        Temp.size = Sec.Size;
+        Temp.offset = Sec.Offset;
+        Temp.align = Sec.Align;
+        Temp.reloff = Sec.RelOff;
+        Temp.nreloc = Sec.NReloc;
+        Temp.flags = Sec.Flags;
+        Temp.reserved1 = Sec.Reserved1;
+        Temp.reserved2 = Sec.Reserved2;
+
         if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(MLC.segment_command_data);
-        memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
-        Begin += sizeof(MachO::segment_command);
+          MachO::swapStruct(Temp);
+        memcpy(Begin, &Temp, sizeof(MachO::section));
+        Begin += sizeof(MachO::section);
+      }
+      continue;
+    case MachO::LC_SEGMENT_64:
+      if (IsLittleEndian != sys::IsLittleEndianHost)
+        MachO::swapStruct(MLC.segment_command_64_data);
+      memcpy(Begin, &MLC.segment_command_64_data,
+             sizeof(MachO::segment_command_64));
+      Begin += sizeof(MachO::segment_command_64);
 
-        for (auto &Sec : LC.Sections) {
-          struct MachO::section Temp;
-          copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
-          copyStringWithPadding(Temp.segname, Sec.Segname, 16);
-          Temp.addr = Sec.Addr;
-          Temp.size = Sec.Size;
-          Temp.offset = Sec.Offset;
-          Temp.align = Sec.Align;
-          Temp.reloff = Sec.RelOff;
-          Temp.nreloc = Sec.NReloc;
-          Temp.flags = Sec.Flags;
-          Temp.reserved1 = Sec.Reserved1;
-          Temp.reserved2 = Sec.Reserved2;
+      for (auto &Sec : LC.Sections) {
+        struct MachO::section_64 Temp;
+        copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
+        copyStringWithPadding(Temp.segname, Sec.Segname, 16);
+        Temp.addr = Sec.Addr;
+        Temp.size = Sec.Size;
+        Temp.offset = Sec.Offset;
+        Temp.align = Sec.Align;
+        Temp.reloff = Sec.RelOff;
+        Temp.nreloc = Sec.NReloc;
+        Temp.flags = Sec.Flags;
+        Temp.reserved1 = Sec.Reserved1;
+        Temp.reserved2 = Sec.Reserved2;
+        Temp.reserved3 = Sec.Reserved3;
 
-          if (IsLittleEndian != sys::IsLittleEndianHost)
-            MachO::swapStruct(Temp);
-          memcpy(Begin, &Temp, sizeof(MachO::section));
-          Begin += sizeof(MachO::section);
-        }
-        continue;
-      case MachO::LC_SEGMENT_64:
         if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(MLC.segment_command_64_data);
-        memcpy(Begin, &MLC.segment_command_64_data, sizeof(MachO::segment_command_64));
-        Begin += sizeof(MachO::segment_command_64);
-
-        for (auto &Sec : LC.Sections) {
-          struct MachO::section_64 Temp;
-          copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
-          copyStringWithPadding(Temp.segname, Sec.Segname, 16);
-          Temp.addr = Sec.Addr;
-          Temp.size = Sec.Size;
-          Temp.offset = Sec.Offset;
-          Temp.align = Sec.Align;
-          Temp.reloff = Sec.RelOff;
-          Temp.nreloc = Sec.NReloc;
-          Temp.flags = Sec.Flags;
-          Temp.reserved1 = Sec.Reserved1;
-          Temp.reserved2 = Sec.Reserved2;
-          Temp.reserved3 = Sec.Reserved3;
-
-          if (IsLittleEndian != sys::IsLittleEndianHost)
-            MachO::swapStruct(Temp);
-          memcpy(Begin, &Temp, sizeof(MachO::section_64));
-          Begin += sizeof(MachO::section_64);
-        }
-        continue;
+          MachO::swapStruct(Temp);
+        memcpy(Begin, &Temp, sizeof(MachO::section_64));
+        Begin += sizeof(MachO::section_64);
+      }
+      continue;
     }
 
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
@@ -410,18 +411,20 @@ void MachOWriter::updateLoadCommandsSize() {
     auto cmd = MLC.load_command_data.cmd;
 
     switch (cmd) {
-      case MachO::LC_SEGMENT:
-        Size += sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
-        continue;
-      case MachO::LC_SEGMENT_64:
-        Size += sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
-        continue;
+    case MachO::LC_SEGMENT:
+      Size += sizeof(MachO::segment_command) +
+              sizeof(MachO::section) * LC.Sections.size();
+      continue;
+    case MachO::LC_SEGMENT_64:
+      Size += sizeof(MachO::segment_command_64) +
+              sizeof(MachO::section_64) * LC.Sections.size();
+      continue;
     }
 
     switch (cmd) {
-#define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct) \
-  case MachO::LCName:                                  \
-    Size += sizeof(MachO::LCStruct);                   \
+#define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
+  case MachO::LCName:                                                          \
+    Size += sizeof(MachO::LCStruct);                                           \
     break;
 #include "llvm/BinaryFormat/MachO.def"
 #undef HANDLE_LOAD_COMMAND
@@ -431,8 +434,9 @@ void MachOWriter::updateLoadCommandsSize() {
   O.Header.SizeOfCmds = Size;
 }
 
-// Updates the index and the number of local/external/undefined symbols. Here we assume
-// that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table is already sorted by the those types.      
+// Updates the index and the number of local/external/undefined symbols. Here we
+// assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table is
+// already sorted by the those types.
 void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
   auto nlocalsym = 0;
   auto Iter = O.SymTable.NameList.begin();
@@ -457,10 +461,12 @@ void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
   MLC.dysymtab_command_data.iextdefsym = nlocalsym;
   MLC.dysymtab_command_data.nextdefsym = nextdefsym;
   MLC.dysymtab_command_data.iundefsym = nlocalsym + nextdefsym;
-  MLC.dysymtab_command_data.nundefsym = O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
+  MLC.dysymtab_command_data.nundefsym =
+      O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
 }
 
-// Updates offset and size fields in load commands and sections since they could be modified.
+// Updates offset and size fields in load commands and sections since they could
+// be modified.
 Error MachOWriter::layout() {
   auto SizeOfCmds = loadCommandsSize();
   auto Offset = headerSize() + SizeOfCmds;
@@ -487,20 +493,24 @@ Error MachOWriter::layout() {
     // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
-      case MachO::LC_SEGMENT:
-        MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
-        MLC.segment_command_data.nsects = LC.Sections.size();
-        MLC.segment_command_data.fileoff = FileOff;
-        MLC.segment_command_data.vmsize = VmOffsetInSegment;
-        MLC.segment_command_data.filesize = FileOffsetInSegment;
-        break;
-      case MachO::LC_SEGMENT_64:
-        MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
-        MLC.segment_command_64_data.nsects = LC.Sections.size();
-        MLC.segment_command_64_data.fileoff = FileOff;
-        MLC.segment_command_64_data.vmsize = VmOffsetInSegment;
-        MLC.segment_command_64_data.filesize = FileOffsetInSegment;
-        break;
+    case MachO::LC_SEGMENT:
+      MLC.segment_command_data.cmdsize =
+          sizeof(MachO::segment_command) +
+          sizeof(MachO::section) * LC.Sections.size();
+      MLC.segment_command_data.nsects = LC.Sections.size();
+      MLC.segment_command_data.fileoff = FileOff;
+      MLC.segment_command_data.vmsize = VmOffsetInSegment;
+      MLC.segment_command_data.filesize = FileOffsetInSegment;
+      break;
+    case MachO::LC_SEGMENT_64:
+      MLC.segment_command_64_data.cmdsize =
+          sizeof(MachO::segment_command_64) +
+          sizeof(MachO::section_64) * LC.Sections.size();
+      MLC.segment_command_64_data.nsects = LC.Sections.size();
+      MLC.segment_command_64_data.fileoff = FileOff;
+      MLC.segment_command_64_data.vmsize = VmOffsetInSegment;
+      MLC.segment_command_64_data.filesize = FileOffsetInSegment;
+      break;
     }
 
     Offset += FileOffsetInSegment;
@@ -520,40 +530,43 @@ Error MachOWriter::layout() {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
     switch (cmd) {
-      case MachO::LC_SYMTAB:
-        MLC.symtab_command_data.symoff = Offset;
-        MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
-        Offset += NListSize * MLC.symtab_command_data.nsyms;
-        MLC.symtab_command_data.stroff = Offset;
-        Offset += MLC.symtab_command_data.strsize;
-        break;
-      case MachO::LC_DYSYMTAB: {
-        if (MLC.dysymtab_command_data.ntoc != 0 ||
-            MLC.dysymtab_command_data.nmodtab != 0 ||
-            MLC.dysymtab_command_data.nextrefsyms != 0 ||
-            MLC.dysymtab_command_data.nlocrel != 0 ||
-            MLC.dysymtab_command_data.nextrel != 0)
-          return createStringError(llvm::errc::not_supported, "shared library is not yet supported");
-      
-        if (MLC.dysymtab_command_data.nindirectsyms != 0)
-          return createStringError(llvm::errc::not_supported, "indirect symbol table is not yet supported");
+    case MachO::LC_SYMTAB:
+      MLC.symtab_command_data.symoff = Offset;
+      MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
+      Offset += NListSize * MLC.symtab_command_data.nsyms;
+      MLC.symtab_command_data.stroff = Offset;
+      Offset += MLC.symtab_command_data.strsize;
+      break;
+    case MachO::LC_DYSYMTAB: {
+      if (MLC.dysymtab_command_data.ntoc != 0 ||
+          MLC.dysymtab_command_data.nmodtab != 0 ||
+          MLC.dysymtab_command_data.nextrefsyms != 0 ||
+          MLC.dysymtab_command_data.nlocrel != 0 ||
+          MLC.dysymtab_command_data.nextrel != 0)
+        return createStringError(llvm::errc::not_supported,
+                                 "shared library is not yet supported");
 
-        updateDysymtab(MLC);
-        break;
-      }
-      case MachO::LC_SEGMENT:
-      case MachO::LC_SEGMENT_64:
-      case MachO::LC_VERSION_MIN_MACOSX:
-      case MachO::LC_BUILD_VERSION:
-      case MachO::LC_ID_DYLIB:
-      case MachO::LC_LOAD_DYLIB:
-      case MachO::LC_UUID:
-      case MachO::LC_SOURCE_VERSION:
-        // Nothing to update.
-        break;
-      default:
-        // Abort if it's unsupported in order to prevent corrupting the object.
-        return createStringError(llvm::errc::not_supported, "unsupported load command (cmd=0x%x)", cmd);
+      if (MLC.dysymtab_command_data.nindirectsyms != 0)
+        return createStringError(llvm::errc::not_supported,
+                                 "indirect symbol table is not yet supported");
+
+      updateDysymtab(MLC);
+      break;
+    }
+    case MachO::LC_SEGMENT:
+    case MachO::LC_SEGMENT_64:
+    case MachO::LC_VERSION_MIN_MACOSX:
+    case MachO::LC_BUILD_VERSION:
+    case MachO::LC_ID_DYLIB:
+    case MachO::LC_LOAD_DYLIB:
+    case MachO::LC_UUID:
+    case MachO::LC_SOURCE_VERSION:
+      // Nothing to update.
+      break;
+    default:
+      // Abort if it's unsupported in order to prevent corrupting the object.
+      return createStringError(llvm::errc::not_supported,
+                               "unsupported load command (cmd=0x%x)", cmd);
     }
   }
 

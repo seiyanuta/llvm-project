@@ -51,8 +51,7 @@ struct Section {
   std::vector<MachO::any_relocation_info> Relocations;
 
   MachO::SectionType getType() const {
-    return static_cast<MachO::SectionType>(Flags &
-                                           MachO::SECTION_TYPE);
+    return static_cast<MachO::SectionType>(Flags & MachO::SECTION_TYPE);
   }
 
   bool isVirtualSection() const {

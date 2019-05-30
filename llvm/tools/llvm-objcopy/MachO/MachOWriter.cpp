@@ -470,18 +470,18 @@ Error MachOWriter::layout() {
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
     uint64_t FileOff = Offset;
-    uint64_t VirtOffsetInSegment = 0;
+    uint64_t VmOffsetInSegment = 0;
     uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
+      auto Align = pow(2, Sec.Align);
       if (!Sec.isVirtualSection()) {
-        auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
+        auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, Align);
         Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
         Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;
       }
-
-      auto VirtPaddingSize = OffsetToAlignment(VirtOffsetInSegment, pow(2, Sec.Align));
-      VirtOffsetInSegment += VirtPaddingSize + Sec.Size;
+      auto VmPaddingSize = OffsetToAlignment(VmOffsetInSegment, Align);
+      VmOffsetInSegment += VmPaddingSize + Sec.Size;
     }
 
     // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
@@ -491,14 +491,14 @@ Error MachOWriter::layout() {
         MLC.segment_command_data.cmdsize = sizeof(MachO::segment_command) + sizeof(MachO::section) * LC.Sections.size();
         MLC.segment_command_data.nsects = LC.Sections.size();
         MLC.segment_command_data.fileoff = FileOff;
-        MLC.segment_command_data.vmsize = VirtOffsetInSegment;
+        MLC.segment_command_data.vmsize = VmOffsetInSegment;
         MLC.segment_command_data.filesize = FileOffsetInSegment;
         break;
       case MachO::LC_SEGMENT_64:
         MLC.segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64) + sizeof(MachO::section_64) * LC.Sections.size();
         MLC.segment_command_64_data.nsects = LC.Sections.size();
         MLC.segment_command_64_data.fileoff = FileOff;
-        MLC.segment_command_64_data.vmsize = VirtOffsetInSegment;
+        MLC.segment_command_64_data.vmsize = VmOffsetInSegment;
         MLC.segment_command_64_data.filesize = FileOffsetInSegment;
         break;
     }
@@ -514,7 +514,7 @@ Error MachOWriter::layout() {
       Offset += sizeof(MachO::any_relocation_info) * Sec.NReloc;
     }
 
-  // Layout tail stuff.
+  // Lay out tail stuff.
   auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;

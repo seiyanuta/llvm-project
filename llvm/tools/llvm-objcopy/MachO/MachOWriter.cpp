@@ -136,10 +136,9 @@ static void copyStringWithPadding(char *Dest, StringRef Src, size_t DestLen) {
 
 void MachOWriter::writeLoadCommands() {
   uint8_t *Begin = B.getBufferStart() + headerSize();
-  MachO::macho_load_command MLC;
   for (const auto &LC : O.LoadCommands) {
-    // Construct new load command.
-    MLC = LC.MachOLoadCommand;
+    // Construct a load command.
+    auto MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       if (IsLittleEndian != sys::IsLittleEndianHost)
@@ -200,8 +199,7 @@ void MachOWriter::writeLoadCommands() {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
     assert(sizeof(MachO::LCStruct) + LC.Payload.size() ==                      \
-           LC.MachOLoadCommand.load_command_data.cmdsize);                     \
-    MLC = LC.MachOLoadCommand;                                                 \
+           MLC.load_command_data.cmdsize);                                     \
     if (IsLittleEndian != sys::IsLittleEndianHost)                             \
       MachO::swapStruct(MLC.LCStruct##_data);                                  \
     memcpy(Begin, &MLC.LCStruct##_data, sizeof(MachO::LCStruct));              \
@@ -211,11 +209,10 @@ void MachOWriter::writeLoadCommands() {
     break;
 
     // Copy the load command as it is.
-    switch (LC.MachOLoadCommand.load_command_data.cmd) {
+    switch (MLC.load_command_data.cmd) {
     default:
       assert(sizeof(MachO::load_command) + LC.Payload.size() ==
-             LC.MachOLoadCommand.load_command_data.cmdsize);
-      MLC = LC.MachOLoadCommand;
+             MLC.load_command_data.cmdsize);
       if (IsLittleEndian != sys::IsLittleEndianHost)
         MachO::swapStruct(MLC.load_command_data);
       memcpy(Begin, &MLC.load_command_data, sizeof(MachO::load_command));
@@ -404,7 +401,7 @@ void MachOWriter::writeTail() {
     (this->*WriteOp.second)();
 }
 
-void MachOWriter::updateLoadCommandsSize() {
+void MachOWriter::updateSizeOfCmds() {
   auto Size = 0;
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
@@ -435,8 +432,8 @@ void MachOWriter::updateLoadCommandsSize() {
 }
 
 // Updates the index and the number of local/external/undefined symbols. Here we
-// assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table is
-// already sorted by the those types.
+// assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
+// are already sorted by the those types.
 void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
   auto nlocalsym = 0;
   auto Iter = O.SymTable.NameList.begin();
@@ -574,7 +571,7 @@ Error MachOWriter::layout() {
 }
 
 Error MachOWriter::finalize() {
-  updateLoadCommandsSize();
+  updateSizeOfCmds();
 
   if (auto E = layout())
     return E;

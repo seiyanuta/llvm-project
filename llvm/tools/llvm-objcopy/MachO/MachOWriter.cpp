@@ -487,7 +487,7 @@ Error MachOWriter::layout() {
       VmOffsetInSegment += VmPaddingSize + Sec.Size;
     }
 
-    // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
+    // TODO: Handle the __PAGEZERO segment.
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:

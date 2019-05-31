@@ -128,12 +128,6 @@ void MachOWriter::writeHeader() {
   memcpy(B.getBufferStart(), &Header, HeaderSize);
 }
 
-static void copyStringWithPadding(char *Dest, StringRef Src, size_t DestLen) {
-  size_t CopyLen = std::min(Src.size(), DestLen);
-  memcpy(reinterpret_cast<void *>(Dest), Src.data(), CopyLen);
-  memset(reinterpret_cast<void *>(Dest + CopyLen), '\0', DestLen - CopyLen);
-}
-
 void MachOWriter::writeLoadCommands() {
   uint8_t *Begin = B.getBufferStart() + headerSize();
   for (const auto &LC : O.LoadCommands) {
@@ -146,10 +140,13 @@ void MachOWriter::writeLoadCommands() {
       memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
       Begin += sizeof(MachO::segment_command);
 
-      for (auto &Sec : LC.Sections) {
+      for (const auto &Sec : LC.Sections) {
         struct MachO::section Temp;
-        copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
-        copyStringWithPadding(Temp.segname, Sec.Segname, 16);
+        memset(&Temp, 0, sizeof(struct MachO::section));
+        assert(Sec.Segname.size() <= 16 && "too long segment name");
+        assert(Sec.Sectname.size() <= 16 && "too long section name");
+        memcpy(Temp.segname, Sec.Segname.data(), Sec.Segname.size());
+        memcpy(Temp.sectname, Sec.Sectname.data(), Sec.Sectname.size());
         Temp.addr = Sec.Addr;
         Temp.size = Sec.Size;
         Temp.offset = Sec.Offset;
@@ -175,8 +172,11 @@ void MachOWriter::writeLoadCommands() {
 
       for (auto &Sec : LC.Sections) {
         struct MachO::section_64 Temp;
-        copyStringWithPadding(Temp.sectname, Sec.Sectname, 16);
-        copyStringWithPadding(Temp.segname, Sec.Segname, 16);
+        memset(&Temp, 0, sizeof(struct MachO::section_64));
+        assert(Sec.Segname.size() <= 16 && "too long segment name");
+        assert(Sec.Sectname.size() <= 16 && "too long section name");
+        memcpy(Temp.segname, Sec.Segname.data(), Sec.Segname.size());
+        memcpy(Temp.sectname, Sec.Sectname.data(), Sec.Sectname.size());
         Temp.addr = Sec.Addr;
         Temp.size = Sec.Size;
         Temp.offset = Sec.Offset;
@@ -434,7 +434,7 @@ void MachOWriter::updateSizeOfCmds() {
 // Updates the index and the number of local/external/undefined symbols. Here we
 // assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
 // are already sorted by the those types.
-void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
+void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
   auto nlocalsym = 0;
   auto Iter = O.SymTable.NameList.begin();
   auto End = O.SymTable.NameList.end();
@@ -462,8 +462,8 @@ void MachOWriter::updateDysymtab(MachO::macho_load_command &MLC) {
       O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
 }
 
-// Updates offset and size fields in load commands and sections since they could
-// be modified.
+// Recomputes and updates offset and size fields in load commands and sections
+// since they could be modified.
 Error MachOWriter::layout() {
   auto SizeOfCmds = loadCommandsSize();
   auto Offset = headerSize() + SizeOfCmds;
@@ -473,7 +473,7 @@ Error MachOWriter::layout() {
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
     uint64_t FileOff = Offset;
-    uint64_t VmOffsetInSegment = 0;
+    uint64_t VMSize = 0;
     uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
       auto Align = pow(2, Sec.Align);
@@ -483,11 +483,14 @@ Error MachOWriter::layout() {
         Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;
       }
-      auto VmPaddingSize = OffsetToAlignment(VmOffsetInSegment, Align);
-      VmOffsetInSegment += VmPaddingSize + Sec.Size;
+
+      //auto VMPaddingSize = OffsetToAlignment(VMOffsetInSegment, Align);
+      errs() << "Name=" <<  Sec.Sectname << ", VMOffset="  << VMSize << ", sec.size=" << Sec.Size << ", pad="  << "\n";
+      VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
+      // VMOffsetInSegment += VMPaddingSize + Sec.Size;
     }
 
-    // TODO: Set FileSize to 0 if the load command is __PAGEZERO.
+    // TODO: Handle the __PAGEZERO segment.
     auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
@@ -496,7 +499,7 @@ Error MachOWriter::layout() {
           sizeof(MachO::section) * LC.Sections.size();
       MLC.segment_command_data.nsects = LC.Sections.size();
       MLC.segment_command_data.fileoff = FileOff;
-      MLC.segment_command_data.vmsize = VmOffsetInSegment;
+      MLC.segment_command_data.vmsize = VMSize;
       MLC.segment_command_data.filesize = FileOffsetInSegment;
       break;
     case MachO::LC_SEGMENT_64:
@@ -505,7 +508,7 @@ Error MachOWriter::layout() {
           sizeof(MachO::section_64) * LC.Sections.size();
       MLC.segment_command_64_data.nsects = LC.Sections.size();
       MLC.segment_command_64_data.fileoff = FileOff;
-      MLC.segment_command_64_data.vmsize = VmOffsetInSegment;
+      MLC.segment_command_64_data.vmsize = VMSize;
       MLC.segment_command_64_data.filesize = FileOffsetInSegment;
       break;
     }
@@ -547,7 +550,7 @@ Error MachOWriter::layout() {
         return createStringError(llvm::errc::not_supported,
                                  "indirect symbol table is not yet supported");
 
-      updateDysymtab(MLC);
+      updateDySymTab(MLC);
       break;
     }
     case MachO::LC_SEGMENT:

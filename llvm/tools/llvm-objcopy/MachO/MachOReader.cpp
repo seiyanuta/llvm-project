@@ -17,15 +17,6 @@ namespace llvm {
 namespace objcopy {
 namespace macho {
 
-// Returns the length of the string. If Str is terminated by NUL, return
-// strlen(Str), otherwise return MaxLen.
-size_t strlenOrMaxLen(const char *Str, size_t MaxLen) {
-  if (Str[MaxLen - 1] != '\0')
-    return MaxLen;
-
-  return strlen(Str);
-}
-
 void MachOReader::readHeader(Object &O) const {
   O.Header.Magic = MachOObj.getHeader().magic;
   O.Header.CPUType = MachOObj.getHeader().cputype;
@@ -39,8 +30,8 @@ void MachOReader::readHeader(Object &O) const {
 template <typename SectionType>
 Section constructSectionCommon(SectionType Sec) {
   Section S;
-  S.Sectname = StringRef(Sec.sectname, strlenOrMaxLen(Sec.sectname, 16)).str();
-  S.Segname = StringRef(Sec.segname, strlenOrMaxLen(Sec.segname, 16)).str();
+  S.Sectname = StringRef(Sec.sectname, strnlen(Sec.sectname, sizeof(Sec.sectname))).str();
+  S.Segname = StringRef(Sec.segname, strnlen(Sec.segname, sizeof(Sec.sectname))).str();
   S.Addr = Sec.addr;
   S.Size = Sec.size;
   S.Offset = Sec.offset;

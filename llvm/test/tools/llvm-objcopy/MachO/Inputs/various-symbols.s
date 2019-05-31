@@ -1,5 +1,5 @@
-# static int i;
-# int f(void) { return i; }
+# static int i; // A local symbol. 
+# int f(void) { return i; } // An external symbol.
 
 	.section	__TEXT,__text,regular,pure_instructions
 	.build_version macos, 10, 14

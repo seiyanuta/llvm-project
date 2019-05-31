@@ -29,7 +29,7 @@ class MachOWriter {
   size_t symTableSize() const;
   size_t strTableSize() const;
 
-  void updateDysymtab(MachO::macho_load_command &MLC);
+  void updateDySymTab(MachO::macho_load_command &MLC);
   void updateSizeOfCmds();
   Error layout();
 

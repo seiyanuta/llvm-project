@@ -476,18 +476,14 @@ Error MachOWriter::layout() {
     uint64_t VMSize = 0;
     uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
-      auto Align = pow(2, Sec.Align);
       if (!Sec.isVirtualSection()) {
-        auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, Align);
+        auto FilePaddingSize = OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
         Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
         Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;
       }
 
-      //auto VMPaddingSize = OffsetToAlignment(VMOffsetInSegment, Align);
-      errs() << "Name=" <<  Sec.Sectname << ", VMOffset="  << VMSize << ", sec.size=" << Sec.Size << ", pad="  << "\n";
       VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
-      // VMOffsetInSegment += VMPaddingSize + Sec.Size;
     }
 
     // TODO: Handle the __PAGEZERO segment.

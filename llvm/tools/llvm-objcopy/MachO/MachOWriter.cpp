@@ -170,7 +170,7 @@ void MachOWriter::writeLoadCommands() {
              sizeof(MachO::segment_command_64));
       Begin += sizeof(MachO::segment_command_64);
 
-      for (auto &Sec : LC.Sections) {
+      for (const auto &Sec : LC.Sections) {
         struct MachO::section_64 Temp;
         memset(&Temp, 0, sizeof(struct MachO::section_64));
         assert(Sec.Segname.size() <= 16 && "too long segment name");
@@ -403,7 +403,7 @@ void MachOWriter::writeTail() {
 
 void MachOWriter::updateSizeOfCmds() {
   auto Size = 0;
-  for (auto &LC : O.LoadCommands) {
+  for (const auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
 

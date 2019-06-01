@@ -24,7 +24,7 @@ size_t MachOWriter::headerSize() const {
 size_t MachOWriter::loadCommandsSize() const { return O.Header.SizeOfCmds; }
 
 size_t MachOWriter::symTableSize() const {
-  return O.SymTable.SymbolEntry.size() *
+  return O.SymTable.Symbols.size() *
          (Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist));
 }
 
@@ -147,21 +147,30 @@ void MachOWriter::writeLoadCommands() {
   }
 }
 
+void MachOWriter::updateSymbolIndexes() {
+  auto Index = 0;
+  for (auto &Symbol : O.SymTable.Symbols) {
+    Symbol->Index = Index;
+    Index++;
+  }
+}
+
 void MachOWriter::writeSections() {
   for (const auto &LC : O.LoadCommands)
     for (const auto &Sec : LC.Sections) {
-      errs() << Sec.Segname << Sec.Sectname << ", " << Sec.Offset << "\n";
+      if (!Sec.Offset) continue; // FIXME:
       assert(Sec.Offset && "Section offset can not be zero");
       assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
       memcpy(B.getBufferStart() + Sec.Offset, Sec.Content.data(),
              Sec.Content.size());
       for (size_t Index = 0; Index < Sec.Relocations.size(); ++Index) {
-        MachO::any_relocation_info R = Sec.Relocations[Index];
+        auto RelocInfo = Sec.Relocations[Index];
+        RelocInfo.Info.r_symbolnum = RelocInfo.Symbol->Index;
         if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(R);
+          MachO::swapStruct(reinterpret_cast<MachO::any_relocation_info &>(RelocInfo.Info));
         memcpy(B.getBufferStart() + Sec.RelOff +
                    Index * sizeof(MachO::any_relocation_info),
-               &R, sizeof(R));
+               &RelocInfo.Info, sizeof(RelocInfo.Info));
       }
     }
 }
@@ -188,24 +197,25 @@ void MachOWriter::writeSymbolTable() {
       O.LoadCommands[*O.SymTabCommandIndex]
           .MachOLoadCommand.symtab_command_data;
 
- SymTabCommand.nsyms = O.SymTable.SymbolEntry.size();
+ SymTabCommand.nsyms = O.SymTable.Symbols.size();
   char *StrTable = (char *)B.getBufferStart() + SymTabCommand.stroff;
   char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
   auto Offset = 1; // SKip the first empty string.
-  for (auto Iter = O.SymTable.SymbolEntry.begin(); Iter != O.SymTable.SymbolEntry.end(); Iter++) {
+  for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end(); Iter++) {
+    std::unique_ptr<SymbolEntry> &Sym = *Iter;
     uint32_t Nstrx = Offset;
     // Write the string table entry corresponding to the symbol.
-    memcpy(StrTable + Offset, Iter->Name.data(), Iter->Name.size());
-    Offset += Iter->Name.size();
-    if (Iter + 1 != O.SymTable.SymbolEntry.end()) {
+    memcpy(StrTable + Offset, Sym->Name.data(), Sym->Name.size());
+    Offset += Sym->Name.size();
+    if (Iter + 1 != O.SymTable.Symbols.end()) {
       StrTable[Offset] = '\0';
       Offset += 1;
     }
 
     if (Is64Bit)
-      writeNListEntry<MachO::nlist_64>(*Iter, IsLittleEndian, SymTable, Nstrx);
+      writeNListEntry<MachO::nlist_64>(*Sym, IsLittleEndian, SymTable, Nstrx);
     else
-      writeNListEntry<MachO::nlist>(*Iter, IsLittleEndian, SymTable, Nstrx);
+      writeNListEntry<MachO::nlist>(*Sym, IsLittleEndian, SymTable, Nstrx);
   }
 }
 
@@ -315,6 +325,7 @@ Error MachOWriter::write() {
     return E;
   memset(B.getBufferStart(), 0, totalSize());
   writeHeader();
+  updateSymbolIndexes();
   writeLoadCommands();
   writeSections();
   writeTail();

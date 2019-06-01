@@ -95,8 +95,15 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
     S.Relocations.reserve(S.NReloc);
     for (auto RI = MachOObj.section_rel_begin(SecRef->getRawDataRefImpl()),
               RE = MachOObj.section_rel_end(SecRef->getRawDataRefImpl());
-         RI != RE; ++RI)
-      S.Relocations.push_back(MachOObj.getRelocation(RI->getRawDataRefImpl()));
+         RI != RE; ++RI) {
+      MachO::any_relocation_info AnyRelocInfo = MachOObj.getRelocation(RI->getRawDataRefImpl());
+      assert(!reinterpret_cast<MachO::scattered_relocation_info *>(&AnyRelocInfo)->r_scattered && "scattered_relocation_info is not yet supported");
+      RelocationInfo R;
+      R.Symbol = nullptr; // We'll fill this field later.
+      memcpy(&R.Info, &AnyRelocInfo, sizeof(struct MachO::relocation_info));
+      S.Relocations.push_back(R);
+    }
+
     assert(S.NReloc == S.Relocations.size() &&
            "Incorrect number of relocations");
   }
@@ -158,6 +165,7 @@ void MachOReader::readLoadCommands(Object &O) const {
 template <typename nlist_t> SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
   assert(nlist.n_strx < StrTable.size() && "n_strx exceeds the size of the string table");
   SymbolEntry SE;
+  SE.Referenced = false;
   SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
   SE.n_type = nlist.n_type;
   SE.n_sect = nlist.n_sect;
@@ -170,13 +178,21 @@ void MachOReader::readSymbolTable(Object &O) const {
   StringRef StrTable = MachOObj.getStringTableData();
   for (auto Symbol : MachOObj.symbols()) {
     SymbolEntry SE =
-        MachOObj.is64Bit()
+        (MachOObj.is64Bit()
             ? constructSymbolEntry<MachO::nlist_64>(
                   StrTable, MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
             : constructSymbolEntry<MachO::nlist>(
-                  StrTable, MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl()));
-    O.SymTable.SymbolEntry.push_back(SE);
+                  StrTable, MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl())));
+
+    O.SymTable.Symbols.push_back(llvm::make_unique<SymbolEntry>(SE));
   }
+}
+
+void MachOReader::setSymbolInRelocationInfo(Object &O) const {
+  for (auto &LC : O.LoadCommands)
+    for (auto &Sec : LC.Sections)
+      for (auto &Reloc : Sec.Relocations)
+        Reloc.Symbol = O.SymTable.getSymbolByIndex(Reloc.Info.r_symbolnum);
 }
 
 void MachOReader::readRebaseInfo(Object &O) const {
@@ -204,6 +220,7 @@ std::unique_ptr<Object> MachOReader::create() const {
   readHeader(*Obj);
   readLoadCommands(*Obj);
   readSymbolTable(*Obj);
+  setSymbolInRelocationInfo(*Obj);
   readRebaseInfo(*Obj);
   readBindInfo(*Obj);
   readWeakBindInfo(*Obj);

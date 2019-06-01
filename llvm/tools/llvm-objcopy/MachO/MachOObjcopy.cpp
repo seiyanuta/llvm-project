@@ -19,19 +19,29 @@ namespace macho {
 
 using namespace object;
 
-static void removeSymbols(const CopyConfig &Config, Object &Obj) {
+static void removeSymbols(const CopyConfig &Config, Object &Obj) { 
+  for (auto &LC : Obj.LoadCommands)
+    for (auto &Sec : LC.Sections)
+      Sec.markSymbols();
 
+  auto RemovePred = [Config](const std::unique_ptr<SymbolEntry> &N) {
+    if (Config.StripAll) {
+      if (N->Referenced)
+        return false;
 
-
-  if (Config.StripUnneeded) {
-    Obj.SymTable.SymbolEntry.erase(std::remove_if(
-      std::begin(Obj.SymTable.SymbolEntry), std::end(Obj.SymTable.SymbolEntry),
-      [](const SymbolEntry &N) { return (N.n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0; }
-    ), std::end(Obj.SymTable.SymbolEntry));
-
-    for (auto &N: Obj.SymTable.SymbolEntry) {      
-      errs() << "name=\'" << N.Name << "\'\n";
+      
     }
+
+    if (Config.StripAll)
+      return (N->n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0;
+
+    return false;
+  };
+
+  Obj.SymTable.removeSymbols(RemovePred);
+
+  for (auto &N: Obj.SymTable.Symbols) {      
+    errs() << "name=\'" << N->Name << "\'\n";
   }
 }
 
@@ -50,7 +60,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
       Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
-      Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
+      Config.StripDebug || Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded || Config.StripAllGNU
       Config.DiscardMode != DiscardType::None ||
       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,

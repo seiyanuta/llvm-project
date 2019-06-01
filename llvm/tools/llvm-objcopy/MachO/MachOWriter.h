@@ -29,6 +29,8 @@ class MachOWriter {
   size_t symTableSize() const;
   size_t strTableSize() const;
 
+  void updateSymbolIndexes();
+
   void writeHeader();
   void writeLoadCommands();
   void writeSections();

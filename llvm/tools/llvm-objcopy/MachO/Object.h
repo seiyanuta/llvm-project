@@ -33,6 +33,7 @@ struct MachHeader {
   uint32_t Reserved = 0;
 };
 
+struct RelocationInfo;
 struct Section {
   char Sectname[16];
   char Segname[16];
@@ -48,7 +49,9 @@ struct Section {
   uint32_t Reserved3;
 
   StringRef Content;
-  std::vector<MachO::any_relocation_info> Relocations;
+  std::vector<RelocationInfo> Relocations;
+
+  void markSymbols();
 };
 
 struct LoadCommand {
@@ -74,6 +77,7 @@ struct SymbolEntry {
   // True if it is referenced from other data structures like a relocation information.
   bool Referenced;
   std::string Name;
+  int Index;
 
   uint8_t n_type;
   uint8_t n_sect;
@@ -84,13 +88,21 @@ struct SymbolEntry {
 /// The location of the symbol table inside the binary is described by LC_SYMTAB
 /// load command.
 struct SymbolTable {
-  std::vector<SymbolEntry> SymbolEntry;
+  std::vector<std::unique_ptr<SymbolEntry>> Symbols;
+
+  SymbolEntry *getSymbolByIndex(uint32_t Index);
+  void removeSymbols(function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove);
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB
 /// load command.
 struct StringTable {
   std::vector<std::string> Strings;
+};
+
+struct RelocationInfo {
+  SymbolEntry *Symbol;
+  struct MachO::relocation_info Info;
 };
 
 /// The location of the rebase info inside the binary is described by

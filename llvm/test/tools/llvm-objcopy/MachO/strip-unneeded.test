@@ -1,0 +1,178 @@
+# RUN: yaml2obj %s > %t
+# RUN: llvm-objcopy --strip-unneeded %t %t.stripped
+# RUN: llvm-readobj --symbols %t.stripped | FileCheck %s
+
+--- !mach-o
+FileHeader:      
+  magic:           0xFEEDFACF
+  cputype:         0x01000007
+  cpusubtype:      0x00000003
+  filetype:        0x00000001
+  ncmds:           4
+  sizeofcmds:      520
+  flags:           0x00002000
+  reserved:        0x00000000
+LoadCommands:    
+  - cmd:             LC_SEGMENT_64
+    cmdsize:         392
+    segname:         ''
+    vmaddr:          0
+    vmsize:          140
+    fileoff:         552
+    filesize:        136
+    maxprot:         7
+    initprot:        7
+    nsects:          4
+    flags:           0
+    Sections:        
+      - sectname:        __text
+        segname:         __TEXT
+        addr:            0x0000000000000000
+        size:            37
+        offset:          0x00000228
+        align:           4
+        reloff:          0x000002B0
+        nreloc:          2
+        flags:           0x80000400
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+# DELETE ME
+      - sectname:        __data
+        segname:         __TEXT
+        addr:            0x0000000000000000
+        size:            2
+        offset:          0x0000024e
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x80000400
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+#      - sectname:        __bss
+#        segname:         __DATA
+#        addr:            0x0000000000000088
+#        size:            4
+#        offset:          0x00000000
+#        align:           2
+#        reloff:          0x00000000
+#        nreloc:          0
+#        flags:           0x00000001
+#        reserved1:       0x00000000
+#        reserved2:       0x00000000
+#        reserved3:       0x00000000
+      - sectname:        __compact_unwind
+        segname:         __LD
+        addr:            0x0000000000000028
+        size:            32
+        offset:          0x00000250
+        align:           3
+        reloff:          0x000002C0
+        nreloc:          1
+        flags:           0x02000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+      - sectname:        __eh_frame
+        segname:         __TEXT
+        addr:            0x0000000000000048
+        size:            64
+        offset:          0x00000270
+        align:           3
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x6800000B
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+  - cmd:             LC_BUILD_VERSION
+    cmdsize:         24
+    platform:        1
+    minos:           658944
+    sdk:             0
+    ntools:          0
+  - cmd:             LC_SYMTAB
+    cmdsize:         24
+    symoff:          712
+    nsyms:           3
+    stroff:          760
+    strsize:         20
+  - cmd:             LC_DYSYMTAB
+    cmdsize:         80
+    ilocalsym:       0
+    nlocalsym:       1
+    iextdefsym:      1
+    nextdefsym:      1
+    iundefsym:       2
+    nundefsym:       1
+    tocoff:          0
+    ntoc:            0
+    modtaboff:       0
+    nmodtab:         0
+    extrefsymoff:    0
+    nextrefsyms:     0
+    indirectsymoff:  0
+    nindirectsyms:   0
+    extreloff:       0
+    nextrel:         0
+    locreloff:       0
+    nlocrel:         0
+LinkEditData:    
+  NameList:        
+    - n_strx:          7
+      n_type:          0x0E
+      n_sect:          2
+      n_desc:          0
+      n_value:         136
+    - n_strx:          10
+      n_type:          0x0F
+      n_sect:          1
+      n_desc:          0
+      n_value:         0
+    - n_strx:          1
+      n_type:          0x01
+      n_sect:          0
+      n_desc:          0
+      n_value:         0
+  StringTable:     
+    - ''
+    - _rand
+    - _a
+    - _rand2
+    - ''
+    - ''
+    - ''
+...
+
+# CHECK:      Symbols [
+# CHECK-NEXT:   Symbol {
+# CHECK-NEXT:     Name: _rand2 (1)
+# CHECK-NEXT:     Extern
+# CHECK-NEXT:     Type: Section (0xE)
+# CHECK-NEXT:     Section: __text (0x1)
+# CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+# CHECK-NEXT:     Flags [ (0x0)
+# CHECK-NEXT:     ]
+# CHECK-NEXT:     Value: 0x0
+# CHECK-NEXT:   }
+# CHECK-NEXT:   Symbol {
+# CHECK-NEXT:     Name: _rand (8)
+# CHECK-NEXT:     Extern
+# CHECK-NEXT:     Type: Undef (0x0)
+# CHECK-NEXT:     Section:  (0x0)
+# CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+# CHECK-NEXT:     Flags [ (0x0)
+# CHECK-NEXT:     ]
+# CHECK-NEXT:     Value: 0x0
+# CHECK-NEXT:   }
+# CHECK-NEXT:   Symbol {
+# CHECK-NEXT:     Name:  (0)
+# CHECK-NEXT:     Type: Undef (0x0)
+# CHECK-NEXT:     Section:  (0x0)
+# CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+# CHECK-NEXT:     Flags [ (0x0)
+# CHECK-NEXT:     ]
+# CHECK-NEXT:     Value: 0x0
+# CHECK-NEXT:   }
+# CHECK-NEXT: ]

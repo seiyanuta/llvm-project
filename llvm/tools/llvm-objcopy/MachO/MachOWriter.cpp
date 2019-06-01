@@ -30,14 +30,6 @@ size_t MachOWriter::symTableSize() const {
          (Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist));
 }
 
-size_t MachOWriter::strTableSize() const {
-  size_t S = 0;
-  for (const auto &Str : O.StrTable.Strings)
-    S += Str.size();
-  S += (O.StrTable.Strings.empty() ? 0 : O.StrTable.Strings.size() - 1);
-  return S;
-}
-
 size_t MachOWriter::totalSize() const {
   // Going from tail to head and looking for an appropriate "anchor" to
   // calculate the total size assuming that all the offsets are either valid
@@ -48,17 +40,12 @@ size_t MachOWriter::totalSize() const {
     const MachO::symtab_command &SymTabCommand =
         O.LoadCommands[*O.SymTabCommandIndex]
             .MachOLoadCommand.symtab_command_data;
-    if (SymTabCommand.symoff) {
-      assert((SymTabCommand.nsyms == O.SymTable.NameList.size()) &&
-             "Incorrect number of symbols");
+    if (SymTabCommand.symoff)
       Ends.push_back(SymTabCommand.symoff + symTableSize());
-    }
-    if (SymTabCommand.stroff) {
-      assert((SymTabCommand.strsize == strTableSize()) &&
-             "Incorrect string table size");
+    if (SymTabCommand.stroff)
       Ends.push_back(SymTabCommand.stroff + SymTabCommand.strsize);
-    }
   }
+
   if (O.DyLdInfoCommandIndex) {
     const MachO::dyld_info_command &DyLdInfoCommand =
         O.LoadCommands[*O.DyLdInfoCommandIndex]
@@ -231,13 +218,13 @@ void MachOWriter::writeSections() {
 }
 
 template <typename NListType>
-void writeNListEntry(const NListEntry &NLE, bool IsLittleEndian, char *&Out) {
+void writeNListEntry(const SymbolEntry &SE, bool IsLittleEndian, char *&Out, uint32_t Nstrx) {
   NListType ListEntry;
-  ListEntry.n_strx = NLE.n_strx;
-  ListEntry.n_type = NLE.n_type;
-  ListEntry.n_sect = NLE.n_sect;
-  ListEntry.n_desc = NLE.n_desc;
-  ListEntry.n_value = NLE.n_value;
+  ListEntry.n_strx = Nstrx;
+  ListEntry.n_type = SE.n_type;
+  ListEntry.n_sect = SE.n_sect;
+  ListEntry.n_desc = SE.n_desc;
+  ListEntry.n_value = SE.n_value;
 
   if (IsLittleEndian != sys::IsLittleEndianHost)
     MachO::swapStruct(ListEntry);
@@ -248,37 +235,28 @@ void writeNListEntry(const NListEntry &NLE, bool IsLittleEndian, char *&Out) {
 void MachOWriter::writeSymbolTable() {
   if (!O.SymTabCommandIndex)
     return;
-  const MachO::symtab_command &SymTabCommand =
+  MachO::symtab_command &SymTabCommand =
       O.LoadCommands[*O.SymTabCommandIndex]
           .MachOLoadCommand.symtab_command_data;
-  assert((SymTabCommand.nsyms == O.SymTable.NameList.size()) &&
-         "Incorrect number of symbols");
-  char *Out = (char *)B.getBufferStart() + SymTabCommand.symoff;
-  for (auto NLE : O.SymTable.NameList) {
-    if (Is64Bit)
-      writeNListEntry<MachO::nlist_64>(NLE, IsLittleEndian, Out);
-    else
-      writeNListEntry<MachO::nlist>(NLE, IsLittleEndian, Out);
-  }
-}
 
-void MachOWriter::writeStringTable() {
-  if (!O.SymTabCommandIndex)
-    return;
-  const MachO::symtab_command &SymTabCommand =
-      O.LoadCommands[*O.SymTabCommandIndex]
-          .MachOLoadCommand.symtab_command_data;
-  char *Out = (char *)B.getBufferStart() + SymTabCommand.stroff;
-  assert((SymTabCommand.strsize == strTableSize()) &&
-         "Incorrect string table size");
-  for (size_t Index = 0; Index < O.StrTable.Strings.size(); ++Index) {
-    memcpy(Out, O.StrTable.Strings[Index].data(),
-           O.StrTable.Strings[Index].size());
-    Out += O.StrTable.Strings[Index].size();
-    if (Index + 1 != O.StrTable.Strings.size()) {
-      memcpy(Out, "\0", 1);
-      Out += 1;
+ SymTabCommand.nsyms = O.SymTable.NameList.size();
+  char *StrTable = (char *)B.getBufferStart() + SymTabCommand.stroff;
+  char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
+  auto Offset = 1; // SKip the first empty string.
+  for (auto Iter = O.SymTable.NameList.begin(); Iter != O.SymTable.NameList.end(); Iter++) {
+    uint32_t Nstrx = Offset;
+    // Write the string table entry corresponding to the symbol.
+    memcpy(StrTable + Offset, Iter->Name.data(), Iter->Name.size());
+    Offset += Iter->Name.size();
+    if (Iter + 1 != O.SymTable.NameList.end()) {
+      StrTable[Offset] = '\0';
+      Offset += 1;
     }
+
+    if (Is64Bit)
+      writeNListEntry<MachO::nlist_64>(*Iter, IsLittleEndian, SymTable, Nstrx);
+    else
+      writeNListEntry<MachO::nlist>(*Iter, IsLittleEndian, SymTable, Nstrx);
   }
 }
 
@@ -353,8 +331,6 @@ void MachOWriter::writeTail() {
             .MachOLoadCommand.symtab_command_data;
     if (SymTabCommand.symoff)
       Queue.push_back({SymTabCommand.symoff, &MachOWriter::writeSymbolTable});
-    if (SymTabCommand.stroff)
-      Queue.push_back({SymTabCommand.stroff, &MachOWriter::writeStringTable});
   }
 
   if (O.DyLdInfoCommandIndex) {

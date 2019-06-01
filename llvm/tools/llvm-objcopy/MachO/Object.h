@@ -69,8 +69,8 @@ struct LoadCommand {
   std::vector<Section> Sections;
 };
 
-struct NListEntry {
-  uint32_t n_strx;
+struct SymbolEntry {
+  std::string Name;
   uint8_t n_type;
   uint8_t n_sect;
   uint16_t n_desc;
@@ -80,7 +80,7 @@ struct NListEntry {
 /// The location of the symbol table inside the binary is described by LC_SYMTAB
 /// load command.
 struct SymbolTable {
-  std::vector<NListEntry> NameList;
+  std::vector<SymbolEntry> NameList;
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB

@@ -155,35 +155,28 @@ void MachOReader::readLoadCommands(Object &O) const {
   }
 }
 
-template <typename nlist_t> NListEntry constructNameList(const nlist_t &nlist) {
-  NListEntry NL;
-  NL.n_strx = nlist.n_strx;
-  NL.n_type = nlist.n_type;
-  NL.n_sect = nlist.n_sect;
-  NL.n_desc = nlist.n_desc;
-  NL.n_value = nlist.n_value;
-  return NL;
+template <typename nlist_t> SymbolEntry constructNameList(StringRef StrTable, const nlist_t &nlist) {
+  assert(nlist.n_strx < StrTable.size() && "n_strx exceeds the size of the string table");
+  SymbolEntry SE;
+  SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
+  SE.n_type = nlist.n_type;
+  SE.n_sect = nlist.n_sect;
+  SE.n_desc = nlist.n_desc;
+  SE.n_value = nlist.n_value;
+  return SE;
 }
 
 void MachOReader::readSymbolTable(Object &O) const {
+  StringRef StrTable = MachOObj.getStringTableData();
   for (auto Symbol : MachOObj.symbols()) {
-    NListEntry NLE =
+    SymbolEntry SE =
         MachOObj.is64Bit()
             ? constructNameList<MachO::nlist_64>(
-                  MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
+                  StrTable, MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
             : constructNameList<MachO::nlist>(
-                  MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl()));
-    O.SymTable.NameList.push_back(NLE);
+                  StrTable, MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl()));
+    O.SymTable.NameList.push_back(SE);
   }
-}
-
-void MachOReader::readStringTable(Object &O) const {
-  StringRef Data = MachOObj.getStringTableData();
-  SmallVector<StringRef, 10> Strs;
-  Data.split(Strs, '\0');
-  O.StrTable.Strings.reserve(Strs.size());
-  for (auto S : Strs)
-    O.StrTable.Strings.push_back(S.str());
 }
 
 void MachOReader::readRebaseInfo(Object &O) const {
@@ -211,7 +204,6 @@ std::unique_ptr<Object> MachOReader::create() const {
   readHeader(*Obj);
   readLoadCommands(*Obj);
   readSymbolTable(*Obj);
-  readStringTable(*Obj);
   readRebaseInfo(*Obj);
   readBindInfo(*Obj);
   readWeakBindInfo(*Obj);

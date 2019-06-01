@@ -35,11 +35,23 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
       Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
-      Config.StripUnneeded || Config.DiscardMode != DiscardType::None ||
+      Config.DiscardMode != DiscardType::None ||
       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");
   }
+
+  if (Config.StripUnneeded) {
+    Obj.SymTable.NameList.erase(std::remove_if(
+      std::begin(Obj.SymTable.NameList), std::end(Obj.SymTable.NameList),
+      [](const SymbolEntry &N) { return (N.n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0; }
+    ), std::end(Obj.SymTable.NameList));
+
+    for (auto &N: Obj.SymTable.NameList) {      
+      errs() << "name=\'" << N.Name << "\'\n";
+    }
+  }
+
 
   return Error::success();
 }

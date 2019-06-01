@@ -69,8 +69,12 @@ struct LoadCommand {
   std::vector<Section> Sections;
 };
 
+// A symbol information. Fields which starts with "n_" are same as them in the nlist.
 struct SymbolEntry {
+  // True if it is referenced from other data structures like a relocation information.
+  bool Referenced;
   std::string Name;
+
   uint8_t n_type;
   uint8_t n_sect;
   uint16_t n_desc;
@@ -80,7 +84,7 @@ struct SymbolEntry {
 /// The location of the symbol table inside the binary is described by LC_SYMTAB
 /// load command.
 struct SymbolTable {
-  std::vector<SymbolEntry> NameList;
+  std::vector<SymbolEntry> SymbolEntry;
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB

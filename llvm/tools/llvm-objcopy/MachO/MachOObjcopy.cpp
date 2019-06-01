@@ -19,6 +19,22 @@ namespace macho {
 
 using namespace object;
 
+static void removeSymbols(const CopyConfig &Config, Object &Obj) {
+
+
+
+  if (Config.StripUnneeded) {
+    Obj.SymTable.SymbolEntry.erase(std::remove_if(
+      std::begin(Obj.SymTable.SymbolEntry), std::end(Obj.SymTable.SymbolEntry),
+      [](const SymbolEntry &N) { return (N.n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0; }
+    ), std::end(Obj.SymTable.SymbolEntry));
+
+    for (auto &N: Obj.SymTable.SymbolEntry) {      
+      errs() << "name=\'" << N.Name << "\'\n";
+    }
+  }
+}
+
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
@@ -41,17 +57,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
                              "option not supported by llvm-objcopy for MachO");
   }
 
-  if (Config.StripUnneeded) {
-    Obj.SymTable.NameList.erase(std::remove_if(
-      std::begin(Obj.SymTable.NameList), std::end(Obj.SymTable.NameList),
-      [](const SymbolEntry &N) { return (N.n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0; }
-    ), std::end(Obj.SymTable.NameList));
-
-    for (auto &N: Obj.SymTable.NameList) {      
-      errs() << "name=\'" << N.Name << "\'\n";
-    }
-  }
-
+  removeSymbols(Config, Obj);
 
   return Error::success();
 }

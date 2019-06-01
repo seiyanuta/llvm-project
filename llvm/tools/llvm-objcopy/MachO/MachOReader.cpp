@@ -157,7 +157,7 @@ void MachOReader::readLoadCommands(Object &O) const {
   }
 }
 
-template <typename nlist_t> SymbolEntry constructNameList(StringRef StrTable, const nlist_t &nlist) {
+template <typename nlist_t> SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
   assert(nlist.n_strx < StrTable.size() && "n_strx exceeds the size of the string table");
   SymbolEntry SE;
   SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
@@ -173,11 +173,11 @@ void MachOReader::readSymbolTable(Object &O) const {
   for (auto Symbol : MachOObj.symbols()) {
     SymbolEntry SE =
         MachOObj.is64Bit()
-            ? constructNameList<MachO::nlist_64>(
+            ? constructSymbolEntry<MachO::nlist_64>(
                   StrTable, MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
-            : constructNameList<MachO::nlist>(
+            : constructSymbolEntry<MachO::nlist>(
                   StrTable, MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl()));
-    O.SymTable.NameList.push_back(SE);
+    O.SymTable.SymbolEntry.push_back(SE);
   }
 }
 

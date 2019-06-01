@@ -26,7 +26,7 @@ size_t MachOWriter::headerSize() const {
 size_t MachOWriter::loadCommandsSize() const { return O.Header.SizeOfCmds; }
 
 size_t MachOWriter::symTableSize() const {
-  return O.SymTable.NameList.size() *
+  return O.SymTable.SymbolEntry.size() *
          (Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist));
 }
 
@@ -239,16 +239,16 @@ void MachOWriter::writeSymbolTable() {
       O.LoadCommands[*O.SymTabCommandIndex]
           .MachOLoadCommand.symtab_command_data;
 
- SymTabCommand.nsyms = O.SymTable.NameList.size();
+ SymTabCommand.nsyms = O.SymTable.SymbolEntry.size();
   char *StrTable = (char *)B.getBufferStart() + SymTabCommand.stroff;
   char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
   auto Offset = 1; // SKip the first empty string.
-  for (auto Iter = O.SymTable.NameList.begin(); Iter != O.SymTable.NameList.end(); Iter++) {
+  for (auto Iter = O.SymTable.SymbolEntry.begin(); Iter != O.SymTable.SymbolEntry.end(); Iter++) {
     uint32_t Nstrx = Offset;
     // Write the string table entry corresponding to the symbol.
     memcpy(StrTable + Offset, Iter->Name.data(), Iter->Name.size());
     Offset += Iter->Name.size();
-    if (Iter + 1 != O.SymTable.NameList.end()) {
+    if (Iter + 1 != O.SymTable.SymbolEntry.end()) {
       StrTable[Offset] = '\0';
       Offset += 1;
     }

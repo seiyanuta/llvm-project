@@ -8,6 +8,7 @@
 
 #include "MachOObjcopy.h"
 #include "../CopyConfig.h"
+#include "../llvm-objcopy.h"
 #include "MachOReader.h"
 #include "MachOWriter.h"
 #include "llvm/Support/Errc.h"
@@ -27,13 +28,12 @@ static void removeSymbols(const CopyConfig &Config, Object &Obj) {
   auto RemovePred = [Config](const std::unique_ptr<SymbolEntry> &N) {
     if (Config.StripAll) {
       if (N->Referenced)
-        return false;
+        reportError(Config.InputFilename, createStringError(llvm::errc::invalid_argument,
+          "not stripping symbol '%s' because it is named in a relocation",
+          N->Name.data()));
 
-      
+      return true;      
     }
-
-    if (Config.StripAll)
-      return (N->n_type & (MachO::N_EXT | MachO::N_PEXT)) == 0;
 
     return false;
   };
@@ -60,7 +60,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
       Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
-      Config.StripDebug || Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded || Config.StripAllGNU
+      Config.StripDebug || Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded || Config.StripAllGNU ||
       Config.DiscardMode != DiscardType::None ||
       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,

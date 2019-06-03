@@ -34,52 +34,46 @@ size_t MachOWriter::totalSize() const {
   // ("true") or 0 (0 indicates that the corresponding part is missing).
 
   SmallVector<size_t, 7> Ends;
-  if (O.SymTabCommandIndex) {
-    const MachO::symtab_command &SymTabCommand =
-        O.LoadCommands[*O.SymTabCommandIndex]
-            .MachOLoadCommand.symtab_command_data;
-    if (SymTabCommand.symoff)
-      Ends.push_back(SymTabCommand.symoff + symTableSize());
-    if (SymTabCommand.stroff)
-      Ends.push_back(SymTabCommand.stroff + SymTabCommand.strsize);
+  if (O.SymTabCommand) {
+    if (O.SymTabCommand->symoff)
+      Ends.push_back(O.SymTabCommand->symoff + symTableSize());
+    if (O.SymTabCommand->stroff)
+      Ends.push_back(O.SymTabCommand->stroff + O.SymTabCommand->strsize);
   }
 
-  if (O.DyLdInfoCommandIndex) {
-    const MachO::dyld_info_command &DyLdInfoCommand =
-        O.LoadCommands[*O.DyLdInfoCommandIndex]
-            .MachOLoadCommand.dyld_info_command_data;
-    if (DyLdInfoCommand.rebase_off) {
-      assert((DyLdInfoCommand.rebase_size == O.Rebases.Opcodes.size()) &&
+  if (O.DyLdInfoCommand) {
+    if (O.DyLdInfoCommand->rebase_off) {
+      assert((O.DyLdInfoCommand->rebase_size == O.Rebases.Opcodes.size()) &&
              "Incorrect rebase opcodes size");
-      Ends.push_back(DyLdInfoCommand.rebase_off + DyLdInfoCommand.rebase_size);
+      Ends.push_back(O.DyLdInfoCommand->rebase_off + O.DyLdInfoCommand->rebase_size);
     }
-    if (DyLdInfoCommand.bind_off) {
-      assert((DyLdInfoCommand.bind_size == O.Binds.Opcodes.size()) &&
+    if (O.DyLdInfoCommand->bind_off) {
+      assert((O.DyLdInfoCommand->bind_size == O.Binds.Opcodes.size()) &&
              "Incorrect bind opcodes size");
-      Ends.push_back(DyLdInfoCommand.bind_off + DyLdInfoCommand.bind_size);
+      Ends.push_back(O.DyLdInfoCommand->bind_off + O.DyLdInfoCommand->bind_size);
     }
-    if (DyLdInfoCommand.weak_bind_off) {
-      assert((DyLdInfoCommand.weak_bind_size == O.WeakBinds.Opcodes.size()) &&
+    if (O.DyLdInfoCommand->weak_bind_off) {
+      assert((O.DyLdInfoCommand->weak_bind_size == O.WeakBinds.Opcodes.size()) &&
              "Incorrect weak bind opcodes size");
-      Ends.push_back(DyLdInfoCommand.weak_bind_off +
-                     DyLdInfoCommand.weak_bind_size);
+      Ends.push_back(O.DyLdInfoCommand->weak_bind_off +
+                     O.DyLdInfoCommand->weak_bind_size);
     }
-    if (DyLdInfoCommand.lazy_bind_off) {
-      assert((DyLdInfoCommand.lazy_bind_size == O.LazyBinds.Opcodes.size()) &&
+    if (O.DyLdInfoCommand->lazy_bind_off) {
+      assert((O.DyLdInfoCommand->lazy_bind_size == O.LazyBinds.Opcodes.size()) &&
              "Incorrect lazy bind opcodes size");
-      Ends.push_back(DyLdInfoCommand.lazy_bind_off +
-                     DyLdInfoCommand.lazy_bind_size);
+      Ends.push_back(O.DyLdInfoCommand->lazy_bind_off +
+                     O.DyLdInfoCommand->lazy_bind_size);
     }
-    if (DyLdInfoCommand.export_off) {
-      assert((DyLdInfoCommand.export_size == O.Exports.Trie.size()) &&
+    if (O.DyLdInfoCommand->export_off) {
+      assert((O.DyLdInfoCommand->export_size == O.Exports.Trie.size()) &&
              "Incorrect trie size");
-      Ends.push_back(DyLdInfoCommand.export_off + DyLdInfoCommand.export_size);
+      Ends.push_back(O.DyLdInfoCommand->export_off + O.DyLdInfoCommand->export_size);
     }
   }
 
   // Otherwise, use the last section / reloction.
   for (const auto &LC : O.LoadCommands)
-    for (const auto &S : LC.Sections) {
+    for (const auto &S : LC->Sections) {
       Ends.push_back(S.Offset + S.Size);
       if (S.RelOff)
         Ends.push_back(S.RelOff +
@@ -119,28 +113,28 @@ void MachOWriter::writeLoadCommands() {
   for (const auto &LC : O.LoadCommands) {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
-    assert(sizeof(MachO::LCStruct) + LC.Payload.size() ==                      \
-           LC.MachOLoadCommand.load_command_data.cmdsize);                     \
-    MLC = LC.MachOLoadCommand;                                                 \
+    assert(sizeof(MachO::LCStruct) + LC->Payload.size() ==                     \
+           LC->MachOLoadCommand.load_command_data.cmdsize);                    \
+    MLC = LC->MachOLoadCommand;                                                \
     if (IsLittleEndian != sys::IsLittleEndianHost)                             \
       MachO::swapStruct(MLC.LCStruct##_data);                                  \
     memcpy(Begin, &MLC.LCStruct##_data, sizeof(MachO::LCStruct));              \
     Begin += sizeof(MachO::LCStruct);                                          \
-    memcpy(Begin, LC.Payload.data(), LC.Payload.size());                       \
-    Begin += LC.Payload.size();                                                \
+    memcpy(Begin, LC->Payload.data(), LC->Payload.size());                     \
+    Begin += LC->Payload.size();                                               \
     break;
 
-    switch (LC.MachOLoadCommand.load_command_data.cmd) {
+    switch (LC->MachOLoadCommand.load_command_data.cmd) {
     default:
-      assert(sizeof(MachO::load_command) + LC.Payload.size() ==
-             LC.MachOLoadCommand.load_command_data.cmdsize);
-      MLC = LC.MachOLoadCommand;
+      assert(sizeof(MachO::load_command) + LC->Payload.size() ==
+             LC->MachOLoadCommand.load_command_data.cmdsize);
+      MLC = LC->MachOLoadCommand;
       if (IsLittleEndian != sys::IsLittleEndianHost)
         MachO::swapStruct(MLC.load_command_data);
       memcpy(Begin, &MLC.load_command_data, sizeof(MachO::load_command));
       Begin += sizeof(MachO::load_command);
-      memcpy(Begin, LC.Payload.data(), LC.Payload.size());
-      Begin += LC.Payload.size();
+      memcpy(Begin, LC->Payload.data(), LC->Payload.size());
+      Begin += LC->Payload.size();
       break;
 #include "llvm/BinaryFormat/MachO.def"
     }
@@ -157,7 +151,7 @@ void MachOWriter::updateSymbolIndexes() {
 
 void MachOWriter::writeSections() {
   for (const auto &LC : O.LoadCommands)
-    for (const auto &Sec : LC.Sections) {
+    for (const auto &Sec : LC->Sections) {
       if (!Sec.Offset) continue; // FIXME:
       assert(Sec.Offset && "Section offset can not be zero");
       assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
@@ -191,15 +185,14 @@ void writeNListEntry(const SymbolEntry &SE, bool IsLittleEndian, char *&Out, uin
 }
 
 void MachOWriter::writeSymbolTable() {
-  if (!O.SymTabCommandIndex)
+  if (!O.SymTabCommand)
     return;
-  MachO::symtab_command &SymTabCommand =
-      O.LoadCommands[*O.SymTabCommandIndex]
-          .MachOLoadCommand.symtab_command_data;
 
- SymTabCommand.nsyms = O.SymTable.Symbols.size();
-  char *StrTable = (char *)B.getBufferStart() + SymTabCommand.stroff;
-  char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
+  // FIXME: do this before writeLoadCommands()
+  O.SymTabCommand->nsyms = O.SymTable.Symbols.size();
+
+  char *StrTable = (char *)B.getBufferStart() + O.SymTabCommand->stroff;
+  char *SymTable = (char *)B.getBufferStart() + O.SymTabCommand->symoff;
   auto Offset = 1; // SKip the first empty string.
   for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end(); Iter++) {
     std::unique_ptr<SymbolEntry> &Sym = *Iter;
@@ -220,61 +213,51 @@ void MachOWriter::writeSymbolTable() {
 }
 
 void MachOWriter::writeRebaseInfo() {
-  if (!O.DyLdInfoCommandIndex)
+  if (!O.DyLdInfoCommand)
     return;
-  const MachO::dyld_info_command &DyLdInfoCommand =
-      O.LoadCommands[*O.DyLdInfoCommandIndex]
-          .MachOLoadCommand.dyld_info_command_data;
-  char *Out = (char *)B.getBufferStart() + DyLdInfoCommand.rebase_off;
-  assert((DyLdInfoCommand.rebase_size == O.Rebases.Opcodes.size()) &&
+
+  char *Out = (char *)B.getBufferStart() + O.DyLdInfoCommand->rebase_off;
+  assert((O.DyLdInfoCommand->rebase_size == O.Rebases.Opcodes.size()) &&
          "Incorrect rebase opcodes size");
   memcpy(Out, O.Rebases.Opcodes.data(), O.Rebases.Opcodes.size());
 }
 
 void MachOWriter::writeBindInfo() {
-  if (!O.DyLdInfoCommandIndex)
+  if (!O.DyLdInfoCommand)
     return;
-  const MachO::dyld_info_command &DyLdInfoCommand =
-      O.LoadCommands[*O.DyLdInfoCommandIndex]
-          .MachOLoadCommand.dyld_info_command_data;
-  char *Out = (char *)B.getBufferStart() + DyLdInfoCommand.bind_off;
-  assert((DyLdInfoCommand.bind_size == O.Binds.Opcodes.size()) &&
+
+  char *Out = (char *)B.getBufferStart() + O.DyLdInfoCommand->bind_off;
+  assert((O.DyLdInfoCommand->bind_size == O.Binds.Opcodes.size()) &&
          "Incorrect bind opcodes size");
   memcpy(Out, O.Binds.Opcodes.data(), O.Binds.Opcodes.size());
 }
 
 void MachOWriter::writeWeakBindInfo() {
-  if (!O.DyLdInfoCommandIndex)
+  if (!O.DyLdInfoCommand)
     return;
-  const MachO::dyld_info_command &DyLdInfoCommand =
-      O.LoadCommands[*O.DyLdInfoCommandIndex]
-          .MachOLoadCommand.dyld_info_command_data;
-  char *Out = (char *)B.getBufferStart() + DyLdInfoCommand.weak_bind_off;
-  assert((DyLdInfoCommand.weak_bind_size == O.WeakBinds.Opcodes.size()) &&
+
+  char *Out = (char *)B.getBufferStart() + O.DyLdInfoCommand->weak_bind_off;
+  assert((O.DyLdInfoCommand->weak_bind_size == O.WeakBinds.Opcodes.size()) &&
          "Incorrect weak bind opcodes size");
   memcpy(Out, O.WeakBinds.Opcodes.data(), O.WeakBinds.Opcodes.size());
 }
 
 void MachOWriter::writeLazyBindInfo() {
-  if (!O.DyLdInfoCommandIndex)
+  if (!O.DyLdInfoCommand)
     return;
-  const MachO::dyld_info_command &DyLdInfoCommand =
-      O.LoadCommands[*O.DyLdInfoCommandIndex]
-          .MachOLoadCommand.dyld_info_command_data;
-  char *Out = (char *)B.getBufferStart() + DyLdInfoCommand.lazy_bind_off;
-  assert((DyLdInfoCommand.lazy_bind_size == O.LazyBinds.Opcodes.size()) &&
+
+  char *Out = (char *)B.getBufferStart() + O.DyLdInfoCommand->lazy_bind_off;
+  assert((O.DyLdInfoCommand->lazy_bind_size == O.LazyBinds.Opcodes.size()) &&
          "Incorrect lazy bind opcodes size");
   memcpy(Out, O.LazyBinds.Opcodes.data(), O.LazyBinds.Opcodes.size());
 }
 
 void MachOWriter::writeExportInfo() {
-  if (!O.DyLdInfoCommandIndex)
+  if (!O.DyLdInfoCommand)
     return;
-  const MachO::dyld_info_command &DyLdInfoCommand =
-      O.LoadCommands[*O.DyLdInfoCommandIndex]
-          .MachOLoadCommand.dyld_info_command_data;
-  char *Out = (char *)B.getBufferStart() + DyLdInfoCommand.export_off;
-  assert((DyLdInfoCommand.export_size == O.Exports.Trie.size()) &&
+
+  char *Out = (char *)B.getBufferStart() + O.DyLdInfoCommand->export_off;
+  assert((O.DyLdInfoCommand->export_size == O.Exports.Trie.size()) &&
          "Incorrect export trie size");
   memcpy(Out, O.Exports.Trie.data(), O.Exports.Trie.size());
 }
@@ -284,32 +267,24 @@ void MachOWriter::writeTail() {
   typedef std::pair<uint64_t, WriteHandlerType> WriteOperation;
   SmallVector<WriteOperation, 7> Queue;
 
-  if (O.SymTabCommandIndex) {
-    const MachO::symtab_command &SymTabCommand =
-        O.LoadCommands[*O.SymTabCommandIndex]
-            .MachOLoadCommand.symtab_command_data;
-    if (SymTabCommand.symoff)
-      Queue.push_back({SymTabCommand.symoff, &MachOWriter::writeSymbolTable});
-  }
+  if (O.SymTabCommand && O.SymTabCommand->symoff)
+      Queue.push_back({O.SymTabCommand->symoff, &MachOWriter::writeSymbolTable});
 
-  if (O.DyLdInfoCommandIndex) {
-    const MachO::dyld_info_command &DyLdInfoCommand =
-        O.LoadCommands[*O.DyLdInfoCommandIndex]
-            .MachOLoadCommand.dyld_info_command_data;
-    if (DyLdInfoCommand.rebase_off)
+  if (O.DyLdInfoCommand) {
+    if (O.DyLdInfoCommand->rebase_off)
       Queue.push_back(
-          {DyLdInfoCommand.rebase_off, &MachOWriter::writeRebaseInfo});
-    if (DyLdInfoCommand.bind_off)
-      Queue.push_back({DyLdInfoCommand.bind_off, &MachOWriter::writeBindInfo});
-    if (DyLdInfoCommand.weak_bind_off)
+          {O.DyLdInfoCommand->rebase_off, &MachOWriter::writeRebaseInfo});
+    if (O.DyLdInfoCommand->bind_off)
+      Queue.push_back({O.DyLdInfoCommand->bind_off, &MachOWriter::writeBindInfo});
+    if (O.DyLdInfoCommand->weak_bind_off)
       Queue.push_back(
-          {DyLdInfoCommand.weak_bind_off, &MachOWriter::writeWeakBindInfo});
-    if (DyLdInfoCommand.lazy_bind_off)
+          {O.DyLdInfoCommand->weak_bind_off, &MachOWriter::writeWeakBindInfo});
+    if (O.DyLdInfoCommand->lazy_bind_off)
       Queue.push_back(
-          {DyLdInfoCommand.lazy_bind_off, &MachOWriter::writeLazyBindInfo});
-    if (DyLdInfoCommand.export_off)
+          {O.DyLdInfoCommand->lazy_bind_off, &MachOWriter::writeLazyBindInfo});
+    if (O.DyLdInfoCommand->export_off)
       Queue.push_back(
-          {DyLdInfoCommand.export_off, &MachOWriter::writeExportInfo});
+          {O.DyLdInfoCommand->export_off, &MachOWriter::writeExportInfo});
   }
 
   llvm::sort(Queue, [](const WriteOperation &LHS, const WriteOperation &RHS) {

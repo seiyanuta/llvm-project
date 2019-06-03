@@ -21,19 +21,9 @@ namespace macho {
 using namespace object;
 
 static void removeSymbols(const CopyConfig &Config, Object &Obj) { 
-  for (auto &LC : Obj.LoadCommands)
-    for (auto &Sec : LC.Sections)
-      Sec.markSymbols();
-
   auto RemovePred = [Config](const std::unique_ptr<SymbolEntry> &N) {
-    if (Config.StripAll) {
-      if (N->Referenced)
-        reportError(Config.InputFilename, createStringError(llvm::errc::invalid_argument,
-          "not stripping symbol '%s' because it is named in a relocation",
-          N->Name.data()));
-
+    if (Config.StripAll)
       return true;      
-    }
 
     return false;
   };

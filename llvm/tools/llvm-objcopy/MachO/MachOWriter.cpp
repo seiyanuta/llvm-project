@@ -244,8 +244,8 @@ void MachOWriter::writeStringTable() {
     return;
 
   uint8_t *StrTable = (uint8_t *) B.getBufferStart() + O.SymTabCommand->stroff;
-  errs() << "StrTable: size=" << O.StrTabBuilder.getSize() << ", actual=" << O.SymTabCommand->strsize << "\n";
-  O.StrTabBuilder.write(StrTable);
+  errs() << "StrTable: size=" << O.StrTableBuilder.getSize() << ", actual=" << O.SymTabCommand->strsize << "\n";
+  O.StrTableBuilder.write(StrTable);
 }
 
 void MachOWriter::writeSymbolTable() {
@@ -255,7 +255,7 @@ void MachOWriter::writeSymbolTable() {
   char *SymTable = (char *) B.getBufferStart() + O.SymTabCommand->symoff;
   for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end(); Iter++) {
     std::unique_ptr<SymbolEntry> &Sym = *Iter;
-    auto Nstrx = O.StrTabBuilder.getOffset(Sym->Name);
+    auto Nstrx = O.StrTableBuilder.getOffset(Sym->Name);
 
     if (Is64Bit)
       writeNListEntry<MachO::nlist_64>(*Sym, IsLittleEndian, SymTable, Nstrx);
@@ -531,10 +531,10 @@ Error MachOWriter::write() {
   if (O.SymTabCommand) {
     // FIXME: do this before writeLoadCommands()
     for (auto &Sym : O.SymTable.Symbols)
-      O.StrTabBuilder.add(Sym->Name);
-    O.StrTabBuilder.finalize();
+      O.StrTableBuilder.add(Sym->Name);
+    O.StrTableBuilder.finalize();
     O.SymTabCommand->nsyms = O.SymTable.Symbols.size();
-    O.SymTabCommand->strsize = O.StrTabBuilder.getSize();
+    O.SymTabCommand->strsize = O.StrTableBuilder.getSize();
   }
 
   if (Error E = B.allocate(totalSize()))

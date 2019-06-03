@@ -211,10 +211,7 @@ struct ExportInfo {
   ArrayRef<uint8_t> Trie;
 };
 
-class Object {
-public:
-  Object() : StrTabBuilder(StringTableBuilder::MachO) {}
-
+struct Object {
   MachHeader Header;
   std::vector<std::unique_ptr<LoadCommand>> LoadCommands;
 
@@ -227,7 +224,7 @@ public:
   LazyBindInfo LazyBinds;
   ExportInfo Exports;
 
-  StringTableBuilder StrTabBuilder;
+  StringTableBuilder StrTableBuilder{StringTableBuilder::MachO};
 
   /// The pointer to LC_SYMTAB load command if present.
   MachO::symtab_command *SymTabCommand = nullptr;

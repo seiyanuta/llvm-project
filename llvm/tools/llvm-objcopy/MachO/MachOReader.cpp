@@ -116,32 +116,32 @@ void MachOReader::readLoadCommands(Object &O) const {
   // For MachO sections indices start from 1.
   size_t NextSectionIndex = 1;
   for (auto LoadCmd : MachOObj.load_commands()) {
-    LoadCommand LC;
+    auto LC = llvm::make_unique<LoadCommand>();
     switch (LoadCmd.C.cmd) {
     case MachO::LC_SEGMENT:
-      LC.Sections = extractSections<MachO::section, MachO::segment_command>(
+      LC->Sections = extractSections<MachO::section, MachO::segment_command>(
           LoadCmd, MachOObj, NextSectionIndex);
       break;
     case MachO::LC_SEGMENT_64:
-      LC.Sections =
+      LC->Sections =
           extractSections<MachO::section_64, MachO::segment_command_64>(
               LoadCmd, MachOObj, NextSectionIndex);
       break;
     case MachO::LC_SYMTAB:
-      O.SymTabCommandIndex = O.LoadCommands.size();
+      O.SymTabCommand = reinterpret_cast<MachO::symtab_command *>(LC.get());
       break;
     case MachO::LC_DYLD_INFO:
     case MachO::LC_DYLD_INFO_ONLY:
-      O.DyLdInfoCommandIndex = O.LoadCommands.size();
+      O.DyLdInfoCommand = reinterpret_cast<MachO::dyld_info_command *>(LC.get());
       break;
     }
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
-    memcpy((void *)&(LC.MachOLoadCommand.LCStruct##_data), LoadCmd.Ptr,        \
+    memcpy((void *)&(LC->MachOLoadCommand.LCStruct##_data), LoadCmd.Ptr,       \
            sizeof(MachO::LCStruct));                                           \
     if (MachOObj.isLittleEndian() != sys::IsLittleEndianHost)                  \
-      MachO::swapStruct(LC.MachOLoadCommand.LCStruct##_data);                  \
-    LC.Payload = ArrayRef<uint8_t>(                                            \
+      MachO::swapStruct(LC->MachOLoadCommand.LCStruct##_data);                 \
+    LC->Payload = ArrayRef<uint8_t>(                                           \
         reinterpret_cast<uint8_t *>(const_cast<char *>(LoadCmd.Ptr)) +         \
             sizeof(MachO::LCStruct),                                           \
         LoadCmd.C.cmdsize - sizeof(MachO::LCStruct));                          \
@@ -149,11 +149,11 @@ void MachOReader::readLoadCommands(Object &O) const {
 
     switch (LoadCmd.C.cmd) {
     default:
-      memcpy((void *)&(LC.MachOLoadCommand.load_command_data), LoadCmd.Ptr,
+      memcpy((void *)&(LC->MachOLoadCommand.load_command_data), LoadCmd.Ptr,
              sizeof(MachO::load_command));
       if (MachOObj.isLittleEndian() != sys::IsLittleEndianHost)
-        MachO::swapStruct(LC.MachOLoadCommand.load_command_data);
-      LC.Payload = ArrayRef<uint8_t>(
+        MachO::swapStruct(LC->MachOLoadCommand.load_command_data);
+      LC->Payload = ArrayRef<uint8_t>(
           reinterpret_cast<uint8_t *>(const_cast<char *>(LoadCmd.Ptr)) +
               sizeof(MachO::load_command),
           LoadCmd.C.cmdsize - sizeof(MachO::load_command));
@@ -192,7 +192,7 @@ void MachOReader::readSymbolTable(Object &O) const {
 
 void MachOReader::setSymbolInRelocationInfo(Object &O) const {
   for (auto &LC : O.LoadCommands)
-    for (auto &Sec : LC.Sections)
+    for (auto &Sec : LC->Sections)
       for (auto &Reloc : Sec.Relocations)
         Reloc.Symbol = O.SymTable.getSymbolByIndex(Reloc.Info.r_symbolnum);
 }

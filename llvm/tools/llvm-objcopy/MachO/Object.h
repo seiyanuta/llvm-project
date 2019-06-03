@@ -210,7 +210,7 @@ struct ExportInfo {
 
 struct Object {
   MachHeader Header;
-  std::vector<LoadCommand> LoadCommands;
+  std::vector<std::unique_ptr<LoadCommand>> LoadCommands;
 
   SymbolTable SymTable;
   StringTable StrTable;
@@ -221,10 +221,11 @@ struct Object {
   LazyBindInfo LazyBinds;
   ExportInfo Exports;
 
-  /// The index of LC_SYMTAB load command if present.
-  Optional<size_t> SymTabCommandIndex;
-  /// The index of LC_DYLD_INFO or LC_DYLD_INFO_ONLY load command if present.
-  Optional<size_t> DyLdInfoCommandIndex;
+  /// The pointer to LC_SYMTAB load command if present.
+  MachO::symtab_command *SymTabCommand = nullptr;
+
+  /// The ponter to LC_DYLD_INFO or LC_DYLD_INFO_ONLY load command if present.
+  MachO::dyld_info_command *DyLdInfoCommand = nullptr;
 };
 
 } // end namespace macho

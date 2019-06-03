@@ -98,11 +98,10 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
     for (auto RI = MachOObj.section_rel_begin(SecRef->getRawDataRefImpl()),
               RE = MachOObj.section_rel_end(SecRef->getRawDataRefImpl());
          RI != RE; ++RI) {
-      MachO::any_relocation_info AnyRelocInfo = MachOObj.getRelocation(RI->getRawDataRefImpl());
-      assert(!reinterpret_cast<MachO::scattered_relocation_info *>(&AnyRelocInfo)->r_scattered && "scattered_relocation_info is not yet supported");
       RelocationInfo R;
       R.Symbol = nullptr; // We'll fill this field later.
-      memcpy(&R.Info, &AnyRelocInfo, sizeof(struct MachO::relocation_info));
+      R.Info = MachOObj.getRelocation(RI->getRawDataRefImpl());
+      R.Scattered = reinterpret_cast<MachO::scattered_relocation_info *>(&R.Info)->r_scattered;
       S.Relocations.push_back(R);
     }
 
@@ -194,7 +193,10 @@ void MachOReader::setSymbolInRelocationInfo(Object &O) const {
   for (auto &LC : O.LoadCommands)
     for (auto &Sec : LC->Sections)
       for (auto &Reloc : Sec.Relocations)
-        Reloc.Symbol = O.SymTable.getSymbolByIndex(Reloc.Info.r_symbolnum);
+        if (!Reloc.Scattered) {
+          auto *Info = reinterpret_cast<MachO::relocation_info*>(&Reloc.Info);
+          Reloc.Symbol = O.SymTable.getSymbolByIndex(Info->r_symbolnum);
+        }
 }
 
 void MachOReader::readRebaseInfo(Object &O) const {

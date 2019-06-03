@@ -12,6 +12,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/MachO.h"
+#include "llvm/MC/StringTableBuilder.h"
 #include "llvm/ObjectYAML/DWARFYAML.h"
 #include "llvm/Support/YAMLTraits.h"
 #include <cstdint>
@@ -100,7 +101,9 @@ struct StringTable {
 
 struct RelocationInfo {
   SymbolEntry *Symbol;
-  struct MachO::relocation_info Info;
+  // True if Info is a scattered_relocation_info.
+  bool Scattered;
+  struct MachO::any_relocation_info Info;
 };
 
 /// The location of the rebase info inside the binary is described by
@@ -196,7 +199,10 @@ struct ExportInfo {
   ArrayRef<uint8_t> Trie;
 };
 
-struct Object {
+class Object {
+public:
+  Object() : StrTabBuilder(StringTableBuilder::MachO) {}
+
   MachHeader Header;
   std::vector<std::unique_ptr<LoadCommand>> LoadCommands;
 
@@ -209,11 +215,14 @@ struct Object {
   LazyBindInfo LazyBinds;
   ExportInfo Exports;
 
+  StringTableBuilder StrTabBuilder;
+
   /// The pointer to LC_SYMTAB load command if present.
   MachO::symtab_command *SymTabCommand = nullptr;
 
   /// The ponter to LC_DYLD_INFO or LC_DYLD_INFO_ONLY load command if present.
   MachO::dyld_info_command *DyLdInfoCommand = nullptr;
+
 };
 
 } // end namespace macho

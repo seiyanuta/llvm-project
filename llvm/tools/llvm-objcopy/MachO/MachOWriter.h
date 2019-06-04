@@ -35,6 +35,8 @@ class MachOWriter {
 
   void writeHeader();
   void writeLoadCommands();
+  template <typename StructType>
+  void writeSectionInLoadCommand(const Section &Sec, uint8_t *&Out);
   void writeSections();
   void writeSymbolTable();
   void writeStringTable();

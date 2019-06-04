@@ -132,7 +132,7 @@ void MachOWriter::writeLoadCommands() {
   uint8_t *Begin = B.getBufferStart() + headerSize();
   for (const auto &LC : O.LoadCommands) {
     // Construct a load command.
-    auto MLC = LC.MachOLoadCommand;
+    MachO::macho_load_command MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       if (IsLittleEndian != sys::IsLittleEndianHost)
@@ -140,28 +140,8 @@ void MachOWriter::writeLoadCommands() {
       memcpy(Begin, &MLC.segment_command_data, sizeof(MachO::segment_command));
       Begin += sizeof(MachO::segment_command);
 
-      for (const auto &Sec : LC.Sections) {
-        struct MachO::section Temp;
-        memset(&Temp, 0, sizeof(struct MachO::section));
-        assert(Sec.Segname.size() <= 16 && "too long segment name");
-        assert(Sec.Sectname.size() <= 16 && "too long section name");
-        memcpy(Temp.segname, Sec.Segname.data(), Sec.Segname.size());
-        memcpy(Temp.sectname, Sec.Sectname.data(), Sec.Sectname.size());
-        Temp.addr = Sec.Addr;
-        Temp.size = Sec.Size;
-        Temp.offset = Sec.Offset;
-        Temp.align = Sec.Align;
-        Temp.reloff = Sec.RelOff;
-        Temp.nreloc = Sec.NReloc;
-        Temp.flags = Sec.Flags;
-        Temp.reserved1 = Sec.Reserved1;
-        Temp.reserved2 = Sec.Reserved2;
-
-        if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(Temp);
-        memcpy(Begin, &Temp, sizeof(MachO::section));
-        Begin += sizeof(MachO::section);
-      }
+      for (const auto &Sec : LC.Sections)
+        writeSectionInLoadCommand<MachO::section>(Sec, Begin);
       continue;
     case MachO::LC_SEGMENT_64:
       if (IsLittleEndian != sys::IsLittleEndianHost)
@@ -170,29 +150,8 @@ void MachOWriter::writeLoadCommands() {
              sizeof(MachO::segment_command_64));
       Begin += sizeof(MachO::segment_command_64);
 
-      for (const auto &Sec : LC.Sections) {
-        struct MachO::section_64 Temp;
-        memset(&Temp, 0, sizeof(struct MachO::section_64));
-        assert(Sec.Segname.size() <= 16 && "too long segment name");
-        assert(Sec.Sectname.size() <= 16 && "too long section name");
-        memcpy(Temp.segname, Sec.Segname.data(), Sec.Segname.size());
-        memcpy(Temp.sectname, Sec.Sectname.data(), Sec.Sectname.size());
-        Temp.addr = Sec.Addr;
-        Temp.size = Sec.Size;
-        Temp.offset = Sec.Offset;
-        Temp.align = Sec.Align;
-        Temp.reloff = Sec.RelOff;
-        Temp.nreloc = Sec.NReloc;
-        Temp.flags = Sec.Flags;
-        Temp.reserved1 = Sec.Reserved1;
-        Temp.reserved2 = Sec.Reserved2;
-        Temp.reserved3 = Sec.Reserved3;
-
-        if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(Temp);
-        memcpy(Begin, &Temp, sizeof(MachO::section_64));
-        Begin += sizeof(MachO::section_64);
-      }
+      for (const auto &Sec : LC.Sections)
+        writeSectionInLoadCommand<MachO::section_64>(Sec, Begin);
       continue;
     }
 
@@ -223,6 +182,30 @@ void MachOWriter::writeLoadCommands() {
 #include "llvm/BinaryFormat/MachO.def"
     }
   }
+}
+
+template <typename StructType>
+void MachOWriter::writeSectionInLoadCommand(const Section &Sec, uint8_t *&Out) {
+  StructType Temp;
+  assert(Sec.Segname.size() <= sizeof(Temp.segname) && "too long segment name");
+  assert(Sec.Sectname.size() <= sizeof(Temp.sectname) && "too long section name");
+  memset(&Temp, 0, sizeof(StructType));
+  memcpy(Temp.segname, Sec.Segname.data(), Sec.Segname.size());
+  memcpy(Temp.sectname, Sec.Sectname.data(), Sec.Sectname.size());
+  Temp.addr = Sec.Addr;
+  Temp.size = Sec.Size;
+  Temp.offset = Sec.Offset;
+  Temp.align = Sec.Align;
+  Temp.reloff = Sec.RelOff;
+  Temp.nreloc = Sec.NReloc;
+  Temp.flags = Sec.Flags;
+  Temp.reserved1 = Sec.Reserved1;
+  Temp.reserved2 = Sec.Reserved2;
+
+  if (IsLittleEndian != sys::IsLittleEndianHost)
+    MachO::swapStruct(Temp);
+  memcpy(Out, &Temp, sizeof(StructType));
+  Out += sizeof(StructType);
 }
 
 void MachOWriter::writeSections() {
@@ -435,31 +418,31 @@ void MachOWriter::updateSizeOfCmds() {
 // assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
 // are already sorted by the those types.
 void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
-  auto nlocalsym = 0;
+  uint32_t NumLocalSymbols = 0;
   auto Iter = O.SymTable.NameList.begin();
   auto End = O.SymTable.NameList.end();
   for (; Iter != End; Iter++) {
     if (Iter->n_type & (MachO::N_EXT | MachO::N_PEXT))
       break;
 
-    nlocalsym++;
+    NumLocalSymbols++;
   }
 
-  auto nextdefsym = 0;
+  uint32_t NumExtSymbols = 0;
   for (; Iter != End; Iter++) {
     if ((Iter->n_type & MachO::N_TYPE) == MachO::N_UNDF)
       break;
 
-    nextdefsym++;
+    NumExtSymbols++;
   }
 
   MLC.dysymtab_command_data.ilocalsym = 0;
-  MLC.dysymtab_command_data.nlocalsym = nlocalsym;
-  MLC.dysymtab_command_data.iextdefsym = nlocalsym;
-  MLC.dysymtab_command_data.nextdefsym = nextdefsym;
-  MLC.dysymtab_command_data.iundefsym = nlocalsym + nextdefsym;
+  MLC.dysymtab_command_data.nlocalsym = NumLocalSymbols;
+  MLC.dysymtab_command_data.iextdefsym = NumLocalSymbols;
+  MLC.dysymtab_command_data.nextdefsym = NumExtSymbols;
+  MLC.dysymtab_command_data.iundefsym = NumLocalSymbols + NumExtSymbols;
   MLC.dysymtab_command_data.nundefsym =
-      O.SymTable.NameList.size() - (nlocalsym + nextdefsym);
+      O.SymTable.NameList.size() - (NumLocalSymbols + NumExtSymbols);
 }
 
 // Recomputes and updates offset and size fields in load commands and sections
@@ -478,7 +461,7 @@ Error MachOWriter::layout() {
     for (auto &Sec : LC.Sections) {
       if (!Sec.isVirtualSection()) {
         auto FilePaddingSize =
-            OffsetToAlignment(FileOffsetInSegment, pow(2, Sec.Align));
+            OffsetToAlignment(FileOffsetInSegment, 1 << Sec.Align);
         Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
         Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;

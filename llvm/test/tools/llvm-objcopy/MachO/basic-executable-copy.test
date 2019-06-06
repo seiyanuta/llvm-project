@@ -1,0 +1,2 @@
+# RUN: llvm-objcopy %p/Inputs/executable.macho-x86_64 %t
+# RUN: llvm-readobj --sections %t | FileCheck %s

@@ -45,6 +45,9 @@ class MachOWriter {
   void writeWeakBindInfo();
   void writeLazyBindInfo();
   void writeExportInfo();
+  void writeIndirectSymbolTable();
+  void writeDataInCodeData();
+  void writeFunctionStartsData();
   void writeTail();
 
 public:

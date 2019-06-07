@@ -98,7 +98,7 @@ size_t MachOWriter::totalSize() const {
             .MachOLoadCommand.dysymtab_command_data;
 
     if (DySymTabCommand.indirectsymoff)
-      Ends.push_back(DySymTabCommand.indirectsymoff + sizeof(uint32_t) * DySymTabCommand.nindirectsyms);
+      Ends.push_back(DySymTabCommand.indirectsymoff + sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
   }
 
   if (O.DataInCodeCommandIndex) {
@@ -120,13 +120,27 @@ size_t MachOWriter::totalSize() const {
   }
 
   // Otherwise, use the last section / reloction.
-  for (const auto &LC : O.LoadCommands)
+  for (const auto &LC : O.LoadCommands) {
+    switch (LC.MachOLoadCommand.load_command_data.cmd) {
+    case MachO::LC_SEGMENT: {
+      auto &SEG = LC.MachOLoadCommand.segment_command_data;
+      Ends.push_back(SEG.fileoff + SEG.filesize);
+      break;
+    }
+    case MachO::LC_SEGMENT_64: {
+      auto &SEG = LC.MachOLoadCommand.segment_command_64_data;
+      Ends.push_back(SEG.fileoff + SEG.filesize);
+      break;
+    }        
+    }
+
     for (const auto &S : LC.Sections) {
       Ends.push_back(S.Offset + S.Size);
       if (S.RelOff)
         Ends.push_back(S.RelOff +
                        S.NReloc * sizeof(MachO::any_relocation_info));
     }
+  }
 
   if (!Ends.empty())
     return *std::max_element(Ends.begin(), Ends.end());
@@ -470,7 +484,7 @@ void MachOWriter::writeTail() {
     if (LinkEditDataCommand.dataoff)
       Queue.push_back(
         {LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData});
-  }
+  }  
 
   llvm::sort(Queue, [](const WriteOperation &LHS, const WriteOperation &RHS) {
     return LHS.first < RHS.first;
@@ -480,8 +494,8 @@ void MachOWriter::writeTail() {
     (this->*WriteOp.second)();
 }
 
-void MachOWriter::updateSizeOfCmds() {
-  auto Size = 0;
+uint32_t MachOWriter::computeSizeOfCmds() {
+  uint32_t Size = 0;
   for (const auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
@@ -506,7 +520,7 @@ void MachOWriter::updateSizeOfCmds() {
     }
   }
 
-  O.Header.SizeOfCmds = Size;
+  return Size;
 }
 
 // Updates the index and the number of local/external/undefined symbols. Here we
@@ -540,13 +554,9 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
       O.SymTable.NameList.size() - (NumLocalSymbols + NumExtDefSymbols);
 }
 
-// Recomputes and updates offset and size fields in load commands and sections
-// since they could be modified.
-Error MachOWriter::layout() {
-  auto SizeOfCmds = loadCommandsSize();
-  auto Offset = headerSize() + SizeOfCmds;
-  O.Header.NCmds = O.LoadCommands.size();
-  O.Header.SizeOfCmds = SizeOfCmds;
+uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
+  uint64_t VMSize = 0;
+  uint64_t FileOffsetInSegment = 0;
 
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
@@ -573,13 +583,6 @@ Error MachOWriter::layout() {
       continue;
     }
 
-    if (Segname == "__PAGEZERO")
-      continue;
-
-    Offset = alignTo(Offset, 4096);
-    uint64_t FileOff = Offset;
-    uint64_t VMSize = 0;
-    uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
       if (!Sec.isVirtualSection()) {
         auto FilePaddingSize =
@@ -588,20 +591,17 @@ Error MachOWriter::layout() {
         Sec.Size = Sec.Content.size();
         FileOffsetInSegment += FilePaddingSize + Sec.Size;
       }
-
+  
       VMSize = std::max(VMSize, Sec.Addr + Sec.Size - SegmentVmAddr);
     }
-
-    VMSize = alignTo(VMSize, 4096);
-    FileOffsetInSegment = alignTo(FileOffsetInSegment, 4096);
-
+  
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       MLC.segment_command_data.cmdsize =
           sizeof(MachO::segment_command) +
           sizeof(MachO::section) * LC.Sections.size();
       MLC.segment_command_data.nsects = LC.Sections.size();
-      MLC.segment_command_data.fileoff = FileOff;
+      MLC.segment_command_data.fileoff = Offset;
       MLC.segment_command_data.vmsize = VMSize;
       MLC.segment_command_data.filesize = FileOffsetInSegment;
       break;
@@ -610,24 +610,30 @@ Error MachOWriter::layout() {
           sizeof(MachO::segment_command_64) +
           sizeof(MachO::section_64) * LC.Sections.size();
       MLC.segment_command_64_data.nsects = LC.Sections.size();
-      MLC.segment_command_64_data.fileoff = FileOff;
+      MLC.segment_command_64_data.fileoff = Offset;
       MLC.segment_command_64_data.vmsize = VMSize;
       MLC.segment_command_64_data.filesize = FileOffsetInSegment;
       break;
     }
-
+  
     Offset += FileOffsetInSegment;
   }
 
-  // Lay out relocations.
+  return Offset;
+}
+
+uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
   for (auto &LC : O.LoadCommands)
     for (auto &Sec : LC.Sections) {
       Sec.RelOff = Sec.Relocations.empty() ? 0 : Offset;
       Sec.NReloc = Sec.Relocations.size();
       Offset += sizeof(MachO::any_relocation_info) * Sec.NReloc;
     }
+  
+  return Offset;
+}
 
-  // Lay out tail stuff.
+Error MachOWriter::layoutTail(uint64_t Offset) {
   auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
@@ -649,9 +655,12 @@ Error MachOWriter::layout() {
         return createStringError(llvm::errc::not_supported,
                                  "shared library is not yet supported");
 
-      MLC.dysymtab_command_data.indirectsymoff = Offset;
-      MLC.dysymtab_command_data.nindirectsyms = O.IndirectSymTable.Symbols.size();
-      Offset += sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+      if (!O.IndirectSymTable.Symbols.empty()) {
+        MLC.dysymtab_command_data.indirectsymoff = Offset;
+        MLC.dysymtab_command_data.nindirectsyms = O.IndirectSymTable.Symbols.size();
+        Offset += sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+      }
+
       updateDySymTab(MLC);
       break;
     }
@@ -667,21 +676,31 @@ Error MachOWriter::layout() {
       break;
     case MachO::LC_DYLD_INFO:
     case MachO::LC_DYLD_INFO_ONLY:
-      MLC.dyld_info_command_data.rebase_off = Offset;
-      MLC.dyld_info_command_data.rebase_size = O.Rebases.Opcodes.size();
-      Offset += O.Rebases.Opcodes.size();
-      MLC.dyld_info_command_data.bind_off = Offset;
-      MLC.dyld_info_command_data.bind_size = O.Binds.Opcodes.size();
-      Offset += O.Binds.Opcodes.size();
-      MLC.dyld_info_command_data.weak_bind_off = Offset;
-      MLC.dyld_info_command_data.weak_bind_size = O.WeakBinds.Opcodes.size();
-      Offset += O.WeakBinds.Opcodes.size();
-      MLC.dyld_info_command_data.lazy_bind_off = Offset;
-      MLC.dyld_info_command_data.lazy_bind_size = O.LazyBinds.Opcodes.size();
-      Offset += O.LazyBinds.Opcodes.size();
-      MLC.dyld_info_command_data.export_off = Offset;
-      MLC.dyld_info_command_data.export_size = O.Exports.Trie.size();
-      Offset += O.Exports.Trie.size();
+      if (!O.Rebases.Opcodes.empty()) {
+        MLC.dyld_info_command_data.rebase_off = Offset;
+        MLC.dyld_info_command_data.rebase_size = O.Rebases.Opcodes.size();
+        Offset += O.Rebases.Opcodes.size();
+      }
+      if (!O.Binds.Opcodes.empty()) {
+        MLC.dyld_info_command_data.bind_off = Offset;
+        MLC.dyld_info_command_data.bind_size = O.Binds.Opcodes.size();
+        Offset += O.Binds.Opcodes.size();
+      }
+      if (!O.WeakBinds.Opcodes.empty()) {
+        MLC.dyld_info_command_data.weak_bind_off = Offset;
+        MLC.dyld_info_command_data.weak_bind_size = O.WeakBinds.Opcodes.size();
+        Offset += O.WeakBinds.Opcodes.size();
+      }
+      if (!O.LazyBinds.Opcodes.empty()) {
+        MLC.dyld_info_command_data.lazy_bind_off = Offset;
+        MLC.dyld_info_command_data.lazy_bind_size = O.LazyBinds.Opcodes.size();
+        Offset += O.LazyBinds.Opcodes.size();
+      }
+      if (!O.Exports.Trie.empty()) {
+        MLC.dyld_info_command_data.export_off = Offset;
+        MLC.dyld_info_command_data.export_size = O.Exports.Trie.size();
+        Offset += O.Exports.Trie.size();
+      }
       break;
     case MachO::LC_LOAD_DYLINKER:
     case MachO::LC_MAIN:
@@ -705,8 +724,19 @@ Error MachOWriter::layout() {
   return Error::success();
 }
 
+// Recomputes and updates offset and size fields in load commands and sections
+// since they could be modified.
+Error MachOWriter::layout() {
+  uint64_t Offset = 0;
+  Offset = headerSize() + O.Header.SizeOfCmds;
+  Offset = layoutSegments(Offset);
+  Offset = layoutRelocations(Offset);
+  return layoutTail(Offset);
+}
+
 Error MachOWriter::finalize() {
-  updateSizeOfCmds();
+  O.Header.NCmds = O.LoadCommands.size();
+  O.Header.SizeOfCmds = computeSizeOfCmds();
 
   if (auto E = layout())
     return E;

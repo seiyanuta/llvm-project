@@ -555,18 +555,16 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
 }
 
 uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
-  uint64_t VMSize = 0;
-  uint64_t FileOffsetInSegment = 0;
-
-  // Lay out sections.
   for (auto &LC : O.LoadCommands) {
     // TODO: Handle the __PAGEZERO segment.
     auto &MLC = LC.MachOLoadCommand;
     StringRef Segname;
     uint64_t SegmentVmAddr = 0;
+    uint64_t SegmentVmSize = 0;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       SegmentVmAddr = MLC.segment_command_data.vmaddr;
+      SegmentVmSize = MLC.segment_command_data.vmsize;
       Segname = StringRef(MLC.segment_command_64_data.segname, strnlen(
         MLC.segment_command_64_data.segname,
         sizeof(MLC.segment_command_64_data.segname)
@@ -574,6 +572,7 @@ uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
       break;
     case MachO::LC_SEGMENT_64:
       SegmentVmAddr = MLC.segment_command_64_data.vmaddr;
+      SegmentVmSize = MLC.segment_command_64_data.vmsize;
       Segname = StringRef(MLC.segment_command_64_data.segname, strnlen(
         MLC.segment_command_64_data.segname,
         sizeof(MLC.segment_command_64_data.segname)
@@ -583,40 +582,49 @@ uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
       continue;
     }
 
+    uint64_t SegOffset = Offset;
+    uint64_t SegFileSize = 0;
     for (auto &Sec : LC.Sections) {
       if (!Sec.isVirtualSection()) {
-        auto FilePaddingSize =
-            OffsetToAlignment(FileOffsetInSegment, 1ull << Sec.Align);
-        Sec.Offset = Offset + FileOffsetInSegment + FilePaddingSize;
-        Sec.Size = Sec.Content.size();
-        FileOffsetInSegment += FilePaddingSize + Sec.Size;
+        uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
+        Sec.Offset = SegOffset + SectOffset;
+        Sec.Size = Sec.isVirtualSection() ? 0 : Sec.Content.size();
+        SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
       }
-  
-      VMSize = std::max(VMSize, Sec.Addr + Sec.Size - SegmentVmAddr);
+      }
+
+    uint64_t VMSize = 0;
+    if (Segname != "__LINKEDIT") {
+      Offset = alignTo(Offset + SegFileSize, 0x1000 /* FIXME: PAGE_SIZE */);
+      SegFileSize = alignTo(SegFileSize, 0x1000 /* FIXME: PAGE SIZE */);
+      VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, 0x1000 /* FIXME: PAGE SIZE */);
+    } else {
+      VMSize = alignTo(SegFileSize, 0x1000 /* FIXME: PAGE SIZE */);
     }
-  
+
+
+    errs() << "layout: seg='" << Segname << "', offset=" << SegOffset << ", size=" << SegFileSize << "\n";
+
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       MLC.segment_command_data.cmdsize =
           sizeof(MachO::segment_command) +
           sizeof(MachO::section) * LC.Sections.size();
       MLC.segment_command_data.nsects = LC.Sections.size();
-      MLC.segment_command_data.fileoff = Offset;
+      MLC.segment_command_data.fileoff = SegOffset;
       MLC.segment_command_data.vmsize = VMSize;
-      MLC.segment_command_data.filesize = FileOffsetInSegment;
+      MLC.segment_command_data.filesize = SegFileSize;
       break;
     case MachO::LC_SEGMENT_64:
       MLC.segment_command_64_data.cmdsize =
           sizeof(MachO::segment_command_64) +
           sizeof(MachO::section_64) * LC.Sections.size();
       MLC.segment_command_64_data.nsects = LC.Sections.size();
-      MLC.segment_command_64_data.fileoff = Offset;
+      MLC.segment_command_64_data.fileoff = SegOffset;
       MLC.segment_command_64_data.vmsize = VMSize;
-      MLC.segment_command_64_data.filesize = FileOffsetInSegment;
+      MLC.segment_command_64_data.filesize = SegFileSize;
       break;
-    }
-  
-    Offset += FileOffsetInSegment;
+    }  
   }
 
   return Offset;
@@ -728,7 +736,6 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
 // since they could be modified.
 Error MachOWriter::layout() {
   uint64_t Offset = 0;
-  Offset = headerSize() + O.Header.SizeOfCmds;
   Offset = layoutSegments(Offset);
   Offset = layoutRelocations(Offset);
   return layoutTail(Offset);

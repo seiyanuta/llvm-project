@@ -57,7 +57,9 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), Out);
+  // FIXME: I'm not sure how the page size determined but 4096 works for me.
+  uint64_t PageSize = 4096;
+  MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), PageSize, Out);
   if (auto E = Writer.finalize())
     return E;
   return Writer.write();

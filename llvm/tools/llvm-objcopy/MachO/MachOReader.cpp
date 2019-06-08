@@ -162,8 +162,6 @@ void MachOReader::readLoadCommands(Object &O) const {
       break;
 #include "llvm/BinaryFormat/MachO.def"
     }
-
-    
     O.LoadCommands.push_back(std::move(LC));
   }
 }
@@ -226,7 +224,10 @@ void MachOReader::readDataInCodeData(Object &O) const {
       O.LoadCommands[*O.DataInCodeCommandIndex]
           .MachOLoadCommand.linkedit_data_command_data;
 
-  O.DataInCode.Data = ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(const_cast<char *>(MachOObj.getData().data()) + LDC.dataoff), LDC.datasize);
+  O.DataInCode.Data = ArrayRef<uint8_t>(
+      reinterpret_cast<uint8_t *>(
+          const_cast<char *>(MachOObj.getData().data()) + LDC.dataoff),
+      LDC.datasize);
 }
 
 void MachOReader::readFunctionStartsData(Object &O) const {
@@ -236,13 +237,17 @@ void MachOReader::readFunctionStartsData(Object &O) const {
       O.LoadCommands[*O.FunctionStartsCommandIndex]
           .MachOLoadCommand.linkedit_data_command_data;
 
-  O.FunctionStarts.Data = ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(const_cast<char *>(MachOObj.getData().data()) + LDC.dataoff), LDC.datasize);
+  O.FunctionStarts.Data = ArrayRef<uint8_t>(
+      reinterpret_cast<uint8_t *>(
+          const_cast<char *>(MachOObj.getData().data()) + LDC.dataoff),
+      LDC.datasize);
 }
 
 void MachOReader::readIndirectSymbolTable(Object &O) const {
   MachO::dysymtab_command DySymTab = MachOObj.getDysymtabLoadCommand();
   for (uint32_t i = 0; i < DySymTab.nindirectsyms; i++)
-    O.IndirectSymTable.Symbols.push_back(MachOObj.getIndirectSymbolTableEntry(DySymTab, i));
+    O.IndirectSymTable.Symbols.push_back(
+        MachOObj.getIndirectSymbolTableEntry(DySymTab, i));
 }
 
 std::unique_ptr<Object> MachOReader::create() const {

@@ -98,25 +98,28 @@ size_t MachOWriter::totalSize() const {
             .MachOLoadCommand.dysymtab_command_data;
 
     if (DySymTabCommand.indirectsymoff)
-      Ends.push_back(DySymTabCommand.indirectsymoff + sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
+      Ends.push_back(DySymTabCommand.indirectsymoff +
+                     sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
   }
 
   if (O.DataInCodeCommandIndex) {
     const MachO::linkedit_data_command &LinkEditDataCommand =
         O.LoadCommands[*O.DataInCodeCommandIndex]
             .MachOLoadCommand.linkedit_data_command_data;
-    
+
     if (LinkEditDataCommand.dataoff)
-      Ends.push_back(LinkEditDataCommand.dataoff + LinkEditDataCommand.datasize);
+      Ends.push_back(LinkEditDataCommand.dataoff +
+                     LinkEditDataCommand.datasize);
   }
 
   if (O.FunctionStartsCommandIndex) {
     const MachO::linkedit_data_command &LinkEditDataCommand =
         O.LoadCommands[*O.FunctionStartsCommandIndex]
             .MachOLoadCommand.linkedit_data_command_data;
-    
+
     if (LinkEditDataCommand.dataoff)
-      Ends.push_back(LinkEditDataCommand.dataoff + LinkEditDataCommand.datasize);
+      Ends.push_back(LinkEditDataCommand.dataoff +
+                     LinkEditDataCommand.datasize);
   }
 
   // Otherwise, use the last section / reloction.
@@ -131,7 +134,7 @@ size_t MachOWriter::totalSize() const {
       auto &Seg = LC.MachOLoadCommand.segment_command_64_data;
       Ends.push_back(Seg.fileoff + Seg.filesize);
       break;
-    }        
+    }
     }
 
     for (const auto &S : LC.Sections) {
@@ -256,7 +259,6 @@ void MachOWriter::writeSections() {
       if (Sec.isVirtualSection())
         continue;
 
-      errs() << Sec.Sectname << ": off=" << Sec.Offset << "\n";
       assert(Sec.Offset && "Section offset can not be zero");
       assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
       memcpy(B.getBufferStart() + Sec.Offset, Sec.Content.data(),
@@ -395,7 +397,8 @@ void MachOWriter::writeIndirectSymbolTable() {
   char *Out = (char *)B.getBufferStart() + DySymTabCommand.indirectsymoff;
   assert((DySymTabCommand.nindirectsyms == O.IndirectSymTable.Symbols.size()) &&
          "Incorrect indirect symbol table size");
-  memcpy(Out, O.IndirectSymTable.Symbols.data(), sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
+  memcpy(Out, O.IndirectSymTable.Symbols.data(),
+         sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
 }
 
 void MachOWriter::writeDataInCodeData() {
@@ -463,8 +466,8 @@ void MachOWriter::writeTail() {
             .MachOLoadCommand.dysymtab_command_data;
 
     if (DySymTabCommand.indirectsymoff)
-      Queue.push_back(
-        {DySymTabCommand.indirectsymoff, &MachOWriter::writeIndirectSymbolTable});
+      Queue.push_back({DySymTabCommand.indirectsymoff,
+                       &MachOWriter::writeIndirectSymbolTable});
   }
 
   if (O.DataInCodeCommandIndex) {
@@ -474,7 +477,7 @@ void MachOWriter::writeTail() {
 
     if (LinkEditDataCommand.dataoff)
       Queue.push_back(
-        {LinkEditDataCommand.dataoff, &MachOWriter::writeDataInCodeData});
+          {LinkEditDataCommand.dataoff, &MachOWriter::writeDataInCodeData});
   }
 
   if (O.FunctionStartsCommandIndex) {
@@ -484,8 +487,8 @@ void MachOWriter::writeTail() {
 
     if (LinkEditDataCommand.dataoff)
       Queue.push_back(
-        {LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData});
-  }  
+          {LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData});
+  }
 
   llvm::sort(Queue, [](const WriteOperation &LHS, const WriteOperation &RHS) {
     return LHS.first < RHS.first;
@@ -514,7 +517,7 @@ uint32_t MachOWriter::computeSizeOfCmds() {
     switch (cmd) {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
-    Size += sizeof(MachO::LCStruct)+ LC.Payload.size();                        \
+    Size += sizeof(MachO::LCStruct) + LC.Payload.size();                       \
     break;
 #include "llvm/BinaryFormat/MachO.def"
 #undef HANDLE_LOAD_COMMAND
@@ -568,18 +571,16 @@ uint64_t MachOWriter::layoutSegments() {
     case MachO::LC_SEGMENT:
       SegmentVmAddr = MLC.segment_command_data.vmaddr;
       SegmentVmSize = MLC.segment_command_data.vmsize;
-      Segname = StringRef(MLC.segment_command_data.segname, strnlen(
-        MLC.segment_command_data.segname,
-        sizeof(MLC.segment_command_data.segname)
-      ));
+      Segname = StringRef(MLC.segment_command_data.segname,
+                          strnlen(MLC.segment_command_data.segname,
+                                  sizeof(MLC.segment_command_data.segname)));
       break;
     case MachO::LC_SEGMENT_64:
       SegmentVmAddr = MLC.segment_command_64_data.vmaddr;
       SegmentVmSize = MLC.segment_command_64_data.vmsize;
-      Segname = StringRef(MLC.segment_command_64_data.segname, strnlen(
-        MLC.segment_command_64_data.segname,
-        sizeof(MLC.segment_command_64_data.segname)
-      ));
+      Segname = StringRef(MLC.segment_command_64_data.segname,
+                          strnlen(MLC.segment_command_64_data.segname,
+                                  sizeof(MLC.segment_command_64_data.segname)));
       break;
     default:
       continue;
@@ -597,23 +598,27 @@ uint64_t MachOWriter::layoutSegments() {
     uint64_t VMSize = 0;
     for (auto &Sec : LC.Sections) {
       if (IsExecutable) {
-       if (!Sec.isVirtualSection()) {
-         errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr << "\n";
-         uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
-         Sec.Offset = SegOffset + SectOffset;
-         Sec.Size = Sec.isVirtualSection() ? 0 : Sec.Content.size();
-         SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
-       }
+        if (Sec.isVirtualSection()) {
+          VMSize += Sec.Size;
+        } else {
+          errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr
+                 << "\n";
+          uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
+          Sec.Offset = SegOffset + SectOffset;
+          Sec.Size = Sec.Content.size();
+          SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
+          VMSize = std::max(VMSize, SegFileSize);
+        }
       } else {
         if (!Sec.isVirtualSection()) {
-         errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset << ", sz=" << SegFileSize << "\n";
-          auto FilePaddingSize =
-              OffsetToAlignment(SegFileSize, 1 << Sec.Align);
-          Sec.Offset = SegOffset + SegFileSize + FilePaddingSize;
+          errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset
+                 << ", sz=" << SegFileSize << "\n";
+          uint64_t PaddingSize = OffsetToAlignment(SegFileSize, 1 << Sec.Align);
+          Sec.Offset = SegOffset + SegFileSize + PaddingSize;
           Sec.Size = Sec.Content.size();
-          SegFileSize += FilePaddingSize + Sec.Size;
+          SegFileSize += PaddingSize + Sec.Size;
         }
-  
+
         VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
       }
     }
@@ -621,14 +626,17 @@ uint64_t MachOWriter::layoutSegments() {
     if (IsExecutable) {
       Offset = alignTo(Offset + SegFileSize, PageSize);
       SegFileSize = alignTo(SegFileSize, PageSize);
-      VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
-      VMSize = std::max(VMSize, SegmentVmSize); // FIXME:
-      errs() << "VMSIZE(" << Segname << "): " << SegFileSize << ", to=" << VMSize << "\n";
+      // Use the original vmsize if the segment is __PAGEZERO.
+      VMSize =
+          Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(VMSize, PageSize);
+      errs() << "VMSIZE(" << Segname << "): " << SegFileSize
+             << ", to=" << VMSize << "\n";
     } else {
       Offset += SegFileSize;
     }
 
-    errs() << "layout: seg='" << Segname << "', offset=" << SegOffset << ", size=" << SegFileSize << "\n";
+    errs() << "layout: seg='" << Segname << "', offset=" << SegOffset
+           << ", size=" << SegFileSize << "\n";
 
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
@@ -649,7 +657,7 @@ uint64_t MachOWriter::layoutSegments() {
       MLC.segment_command_64_data.vmsize = VMSize;
       MLC.segment_command_64_data.filesize = SegFileSize;
       break;
-    }  
+    }
   }
 
   return Offset;
@@ -662,27 +670,35 @@ uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
       Sec.NReloc = Sec.Relocations.size();
       Offset += sizeof(MachO::any_relocation_info) * Sec.NReloc;
     }
-  
+
   return Offset;
 }
 
 Error MachOWriter::layoutTail(uint64_t Offset) {
   // The order of LINKEDIT elements as follows:
-  // rebase info, binding info, weak binding info, lazy binding info, export trie,
-  // data-in-code, symbol table, indirect symbol table, symbol table strings.
+  // rebase info, binding info, weak binding info, lazy binding info, export
+  // trie, data-in-code, symbol table, indirect symbol table, symbol table
+  // strings.
   uint64_t NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   uint64_t StartOfLinkEdit = Offset;
   uint64_t StartOfRebaseInfo = StartOfLinkEdit;
   uint64_t StartOfBindingInfo = StartOfRebaseInfo + O.Rebases.Opcodes.size();
   uint64_t StartOfWeakBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
-  uint64_t StartOfLazyBindingInfo = StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
-  uint64_t StartOfExportTrie = StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
+  uint64_t StartOfLazyBindingInfo =
+      StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
+  uint64_t StartOfExportTrie =
+      StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
   uint64_t StartOfFunctionStarts = StartOfExportTrie + O.Exports.Trie.size();
-  uint64_t StartOfDataInCode = StartOfFunctionStarts + O.FunctionStarts.Data.size();
+  uint64_t StartOfDataInCode =
+      StartOfFunctionStarts + O.FunctionStarts.Data.size();
   uint64_t StartOfSymbols = StartOfDataInCode + O.DataInCode.Data.size();
-  uint64_t StartOfIndirectSymbols = StartOfSymbols + NListSize * O.SymTable.NameList.size();
-  uint64_t StartOfSymbolStrings = StartOfIndirectSymbols + sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
-  uint64_t LinkEditSize = (StartOfSymbolStrings + strTableSize()) - StartOfLinkEdit;
+  uint64_t StartOfIndirectSymbols =
+      StartOfSymbols + NListSize * O.SymTable.NameList.size();
+  uint64_t StartOfSymbolStrings =
+      StartOfIndirectSymbols +
+      sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+  uint64_t LinkEditSize =
+      (StartOfSymbolStrings + strTableSize()) - StartOfLinkEdit;
 
   // Now we have determined the layout of the contents of the __LINKEDIT
   // segment. Update its load command.
@@ -701,7 +717,7 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
       MLC->segment_command_64_data.vmsize = alignTo(LinkEditSize, PageSize);
       MLC->segment_command_64_data.filesize = LinkEditSize;
       break;
-    }  
+    }
   }
 
   for (auto &LC : O.LoadCommands) {
@@ -725,7 +741,8 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
 
       if (!O.IndirectSymTable.Symbols.empty()) {
         MLC.dysymtab_command_data.indirectsymoff = StartOfIndirectSymbols;
-        MLC.dysymtab_command_data.nindirectsyms = O.IndirectSymTable.Symbols.size();
+        MLC.dysymtab_command_data.nindirectsyms =
+            O.IndirectSymTable.Symbols.size();
       }
 
       updateDySymTab(MLC);

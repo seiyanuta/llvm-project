@@ -123,27 +123,13 @@ size_t MachOWriter::totalSize() const {
   }
 
   // Otherwise, use the last section / reloction.
-  for (const auto &LC : O.LoadCommands) {
-    switch (LC.MachOLoadCommand.load_command_data.cmd) {
-    case MachO::LC_SEGMENT: {
-      auto &Seg = LC.MachOLoadCommand.segment_command_data;
-      Ends.push_back(Seg.fileoff + Seg.filesize);
-      break;
-    }
-    case MachO::LC_SEGMENT_64: {
-      auto &Seg = LC.MachOLoadCommand.segment_command_64_data;
-      Ends.push_back(Seg.fileoff + Seg.filesize);
-      break;
-    }
-    }
-
+  for (const auto &LC : O.LoadCommands)
     for (const auto &S : LC.Sections) {
       Ends.push_back(S.Offset + S.Size);
       if (S.RelOff)
         Ends.push_back(S.RelOff +
                        S.NReloc * sizeof(MachO::any_relocation_info));
     }
-  }
 
   if (!Ends.empty())
     return *std::max_element(Ends.begin(), Ends.end());
@@ -675,7 +661,7 @@ uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
 }
 
 Error MachOWriter::layoutTail(uint64_t Offset) {
-  // The order of LINKEDIT elements as follows:
+  // The order of LINKEDIT elements is as follows:
   // rebase info, binding info, weak binding info, lazy binding info, export
   // trie, data-in-code, symbol table, indirect symbol table, symbol table
   // strings.
@@ -776,6 +762,7 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
       break;
     case MachO::LC_LOAD_DYLINKER:
     case MachO::LC_MAIN:
+    case MachO::LC_RPATH:
     case MachO::LC_SEGMENT:
     case MachO::LC_SEGMENT_64:
     case MachO::LC_VERSION_MIN_MACOSX:
@@ -783,7 +770,6 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
     case MachO::LC_ID_DYLIB:
     case MachO::LC_LOAD_DYLIB:
     case MachO::LC_UUID:
-    case MachO::LC_RPATH:
     case MachO::LC_SOURCE_VERSION:
       // Nothing to update.
       break;

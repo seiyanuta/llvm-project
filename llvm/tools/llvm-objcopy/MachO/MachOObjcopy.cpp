@@ -57,8 +57,10 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  // FIXME: I'm not sure how the page size determined but 4096 works for me.
-  uint64_t PageSize = 4096;
+  // We need to determine the page size to align addresses in load commands.
+  // 4096 is a hard-coded value in GNU binutils (TARGET_PAGESIZE).
+  const uint64_t PageSize = 4096;
+
   MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), PageSize, Out);
   if (auto E = Writer.finalize())
     return E;

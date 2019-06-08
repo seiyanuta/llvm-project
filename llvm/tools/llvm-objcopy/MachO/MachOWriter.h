@@ -23,6 +23,8 @@ class MachOWriter {
   bool Is64Bit;
   bool IsLittleEndian;
   Buffer &B;
+  // Points to the __LINKEDIT segment if exists.
+  MachO::macho_load_command *LinkEditLoadCommand = nullptr;
 
   size_t headerSize() const;
   size_t loadCommandsSize() const;

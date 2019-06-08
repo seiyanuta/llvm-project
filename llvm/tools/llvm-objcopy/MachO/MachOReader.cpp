@@ -162,8 +162,6 @@ void MachOReader::readLoadCommands(Object &O) const {
       break;
 #include "llvm/BinaryFormat/MachO.def"
     }
-
-    
     O.LoadCommands.push_back(std::move(LC));
   }
 }

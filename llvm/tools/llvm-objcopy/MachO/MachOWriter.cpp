@@ -256,7 +256,6 @@ void MachOWriter::writeSections() {
       if (Sec.isVirtualSection())
         continue;
 
-      errs() << Sec.Sectname << ": off=" << Sec.Offset << "\n";
       assert(Sec.Offset && "Section offset can not be zero");
       assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
       memcpy(B.getBufferStart() + Sec.Offset, Sec.Content.data(),
@@ -597,23 +596,25 @@ uint64_t MachOWriter::layoutSegments() {
     uint64_t VMSize = 0;
     for (auto &Sec : LC.Sections) {
       if (IsExecutable) {
-       if (!Sec.isVirtualSection()) {
-         errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr << "\n";
-         uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
-         Sec.Offset = SegOffset + SectOffset;
-         Sec.Size = Sec.isVirtualSection() ? 0 : Sec.Content.size();
-         SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
-       }
+        if (Sec.isVirtualSection()) {
+          VMSize += Sec.Size;
+        } else {
+          errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr << "\n";
+          uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
+          Sec.Offset = SegOffset + SectOffset;
+          Sec.Size = Sec.Content.size();
+          SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
+          VMSize = std::max(VMSize, SegFileSize);
+        }
       } else {
         if (!Sec.isVirtualSection()) {
-         errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset << ", sz=" << SegFileSize << "\n";
-          auto FilePaddingSize =
-              OffsetToAlignment(SegFileSize, 1 << Sec.Align);
-          Sec.Offset = SegOffset + SegFileSize + FilePaddingSize;
+          errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset << ", sz=" << SegFileSize << "\n";
+          uint64_t PaddingSize = OffsetToAlignment(SegFileSize, 1 << Sec.Align);
+          Sec.Offset = SegOffset + SegFileSize + PaddingSize;
           Sec.Size = Sec.Content.size();
-          SegFileSize += FilePaddingSize + Sec.Size;
-        }
-  
+          SegFileSize += PaddingSize + Sec.Size;
+        }  
+
         VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
       }
     }
@@ -621,8 +622,8 @@ uint64_t MachOWriter::layoutSegments() {
     if (IsExecutable) {
       Offset = alignTo(Offset + SegFileSize, PageSize);
       SegFileSize = alignTo(SegFileSize, PageSize);
-      VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
-      VMSize = std::max(VMSize, SegmentVmSize); // FIXME:
+      VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(VMSize, PageSize);
+      //VMSize = std::max(SegmentVmSize, VMSize);
       errs() << "VMSIZE(" << Segname << "): " << SegFileSize << ", to=" << VMSize << "\n";
     } else {
       Offset += SegFileSize;

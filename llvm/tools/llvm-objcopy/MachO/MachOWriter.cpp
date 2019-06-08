@@ -544,10 +544,12 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
       O.SymTable.NameList.size() - (NumLocalSymbols + NumExtDefSymbols);
 }
 
+// Computes and updates some fields in segments and sections. This function
+// handles an object file and other file types differently in terms of the
+// beginning of the file offset and alignments.
 uint64_t MachOWriter::layoutSegments() {
-  bool IsExecutable = O.Header.FileType == MachO::HeaderFileType::MH_EXECUTE;
-  uint64_t Offset = IsExecutable ? 0 : (headerSize() + O.Header.SizeOfCmds);
-  errs() << "IsExecutable: " << IsExecutable << "\n";
+  bool IsObjectFile = O.Header.FileType == MachO::HeaderFileType::MH_OBJECT;
+  uint64_t Offset = IsObjectFile ? (headerSize() + O.Header.SizeOfCmds) : 0;
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     StringRef Segname;
@@ -579,50 +581,44 @@ uint64_t MachOWriter::layoutSegments() {
       continue;
     }
 
+    // Update file offsets and sizes of sections.
     uint64_t SegOffset = Offset;
     uint64_t SegFileSize = 0;
     uint64_t VMSize = 0;
     for (auto &Sec : LC.Sections) {
-      if (IsExecutable) {
+      if (IsObjectFile) {
         if (Sec.isVirtualSection()) {
+          Sec.Offset = 0;
+        } else {
+          uint64_t PaddingSize = OffsetToAlignment(SegFileSize, 1 << Sec.Align);
+          Sec.Offset = SegOffset + SegFileSize + PaddingSize;
+          Sec.Size = Sec.Content.size();
+          SegFileSize += PaddingSize + Sec.Size;
+        }
+        VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
+      } else {
+        if (Sec.isVirtualSection()) {
+          Sec.Offset = 0;
           VMSize += Sec.Size;
         } else {
-          errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr
-                 << "\n";
           uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
           Sec.Offset = SegOffset + SectOffset;
           Sec.Size = Sec.Content.size();
           SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
           VMSize = std::max(VMSize, SegFileSize);
         }
-      } else {
-        if (!Sec.isVirtualSection()) {
-          errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset
-                 << ", sz=" << SegFileSize << "\n";
-          uint64_t PaddingSize = OffsetToAlignment(SegFileSize, 1 << Sec.Align);
-          Sec.Offset = SegOffset + SegFileSize + PaddingSize;
-          Sec.Size = Sec.Content.size();
-          SegFileSize += PaddingSize + Sec.Size;
-        }
-
-        VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
       }
     }
 
-    if (IsExecutable) {
+    if (IsObjectFile) {
+      Offset += SegFileSize;
+    } else {
       Offset = alignTo(Offset + SegFileSize, PageSize);
       SegFileSize = alignTo(SegFileSize, PageSize);
       // Use the original vmsize if the segment is __PAGEZERO.
       VMSize =
           Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(VMSize, PageSize);
-      errs() << "VMSIZE(" << Segname << "): " << SegFileSize
-             << ", to=" << VMSize << "\n";
-    } else {
-      Offset += SegFileSize;
     }
-
-    errs() << "layout: seg='" << Segname << "', offset=" << SegOffset
-           << ", size=" << SegFileSize << "\n";
 
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:

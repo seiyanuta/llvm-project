@@ -24,7 +24,7 @@ class MachOWriter {
   bool IsLittleEndian;
   uint64_t PageSize;
   Buffer &B;
-  // Points to the __LINKEDIT segment if exists.
+  // Points to the __LINKEDIT segment if it exists.
   MachO::macho_load_command *LinkEditLoadCommand = nullptr;
 
   size_t headerSize() const;
@@ -34,7 +34,6 @@ class MachOWriter {
 
   void updateDySymTab(MachO::macho_load_command &MLC);
   uint32_t computeSizeOfCmds();
-  void updateSizeOfCmds();
   uint64_t layoutSegments();
   uint64_t layoutRelocations(uint64_t Offset);
   Error layoutTail(uint64_t Offset);

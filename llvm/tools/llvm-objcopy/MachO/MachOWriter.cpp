@@ -758,15 +758,20 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
       break;
     case MachO::LC_DYLD_INFO:
     case MachO::LC_DYLD_INFO_ONLY:
-      MLC.dyld_info_command_data.rebase_off = O.Rebases.Opcodes.empty() ? 0 : StartOfRebaseInfo;
+      MLC.dyld_info_command_data.rebase_off =
+          O.Rebases.Opcodes.empty() ? 0 : StartOfRebaseInfo;
       MLC.dyld_info_command_data.rebase_size = O.Rebases.Opcodes.size();
-      MLC.dyld_info_command_data.bind_off = O.Binds.Opcodes.empty() ? 0 : StartOfBindingInfo;
+      MLC.dyld_info_command_data.bind_off =
+          O.Binds.Opcodes.empty() ? 0 : StartOfBindingInfo;
       MLC.dyld_info_command_data.bind_size = O.Binds.Opcodes.size();
-      MLC.dyld_info_command_data.weak_bind_off = O.WeakBinds.Opcodes.empty() ? 0 : StartOfWeakBindingInfo;
+      MLC.dyld_info_command_data.weak_bind_off =
+          O.WeakBinds.Opcodes.empty() ? 0 : StartOfWeakBindingInfo;
       MLC.dyld_info_command_data.weak_bind_size = O.WeakBinds.Opcodes.size();
-      MLC.dyld_info_command_data.lazy_bind_off = O.LazyBinds.Opcodes.empty() ? 0 : StartOfLazyBindingInfo;
+      MLC.dyld_info_command_data.lazy_bind_off =
+          O.LazyBinds.Opcodes.empty() ? 0 : StartOfLazyBindingInfo;
       MLC.dyld_info_command_data.lazy_bind_size = O.LazyBinds.Opcodes.size();
-      MLC.dyld_info_command_data.export_off = O.Exports.Trie.empty() ? 0 : StartOfExportTrie;
+      MLC.dyld_info_command_data.export_off =
+          O.Exports.Trie.empty() ? 0 : StartOfExportTrie;
       MLC.dyld_info_command_data.export_size = O.Exports.Trie.size();
       break;
     case MachO::LC_LOAD_DYLINKER:

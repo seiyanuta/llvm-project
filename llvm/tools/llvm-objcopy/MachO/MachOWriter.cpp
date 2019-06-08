@@ -622,8 +622,8 @@ uint64_t MachOWriter::layoutSegments() {
     if (IsExecutable) {
       Offset = alignTo(Offset + SegFileSize, PageSize);
       SegFileSize = alignTo(SegFileSize, PageSize);
+      // Use the original vmsize if the segment is __PAGEZERO.
       VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(VMSize, PageSize);
-      //VMSize = std::max(SegmentVmSize, VMSize);
       errs() << "VMSIZE(" << Segname << "): " << SegFileSize << ", to=" << VMSize << "\n";
     } else {
       Offset += SegFileSize;

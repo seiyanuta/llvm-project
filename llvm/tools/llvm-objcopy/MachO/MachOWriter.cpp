@@ -532,7 +532,7 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
   auto Iter = O.SymTable.NameList.begin();
   auto End = O.SymTable.NameList.end();
   for (; Iter != End; Iter++) {
-    if (Iter->n_type & (MachO::N_EXT | MachO::N_PEXT))
+    if (Iter->n_type & MachO::N_EXT)
       break;
 
     NumLocalSymbols++;
@@ -622,6 +622,8 @@ uint64_t MachOWriter::layoutSegments() {
       Offset = alignTo(Offset + SegFileSize, PageSize);
       SegFileSize = alignTo(SegFileSize, PageSize);
       VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
+      VMSize = std::max(VMSize, SegmentVmSize); // FIXME:
+      errs() << "VMSIZE(" << Segname << "): " << SegFileSize << ", to=" << VMSize << "\n";
     } else {
       Offset += SegFileSize;
     }
@@ -666,15 +668,15 @@ uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
 
 Error MachOWriter::layoutTail(uint64_t Offset) {
   // The order of LINKEDIT elements as follows:
-  // rebase info, binding info, lazy binding info, weak binding info, export trie,
+  // rebase info, binding info, weak binding info, lazy binding info, export trie,
   // data-in-code, symbol table, indirect symbol table, symbol table strings.
   uint64_t NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   uint64_t StartOfLinkEdit = Offset;
   uint64_t StartOfRebaseInfo = StartOfLinkEdit;
   uint64_t StartOfBindingInfo = StartOfRebaseInfo + O.Rebases.Opcodes.size();
-  uint64_t StartOfLazyBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
-  uint64_t StartOfWeakBindingInfo = StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
-  uint64_t StartOfExportTrie = StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
+  uint64_t StartOfWeakBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
+  uint64_t StartOfLazyBindingInfo = StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
+  uint64_t StartOfExportTrie = StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
   uint64_t StartOfFunctionStarts = StartOfExportTrie + O.Exports.Trie.size();
   uint64_t StartOfDataInCode = StartOfFunctionStarts + O.FunctionStarts.Data.size();
   uint64_t StartOfSymbols = StartOfDataInCode + O.DataInCode.Data.size();
@@ -769,6 +771,7 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
     case MachO::LC_ID_DYLIB:
     case MachO::LC_LOAD_DYLIB:
     case MachO::LC_UUID:
+    case MachO::LC_RPATH:
     case MachO::LC_SOURCE_VERSION:
       // Nothing to update.
       break;

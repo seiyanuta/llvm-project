@@ -35,7 +35,7 @@ class MachOWriter {
   void updateDySymTab(MachO::macho_load_command &MLC);
   uint32_t computeSizeOfCmds();
   void updateSizeOfCmds();
-  uint64_t layoutSegments(uint64_t Offset);
+  uint64_t layoutSegments();
   uint64_t layoutRelocations(uint64_t Offset);
   Error layoutTail(uint64_t Offset);
   Error layout();

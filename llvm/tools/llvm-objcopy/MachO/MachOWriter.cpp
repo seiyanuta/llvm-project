@@ -123,13 +123,13 @@ size_t MachOWriter::totalSize() const {
   for (const auto &LC : O.LoadCommands) {
     switch (LC.MachOLoadCommand.load_command_data.cmd) {
     case MachO::LC_SEGMENT: {
-      auto &SEG = LC.MachOLoadCommand.segment_command_data;
-      Ends.push_back(SEG.fileoff + SEG.filesize);
+      auto &Seg = LC.MachOLoadCommand.segment_command_data;
+      Ends.push_back(Seg.fileoff + Seg.filesize);
       break;
     }
     case MachO::LC_SEGMENT_64: {
-      auto &SEG = LC.MachOLoadCommand.segment_command_64_data;
-      Ends.push_back(SEG.fileoff + SEG.filesize);
+      auto &Seg = LC.MachOLoadCommand.segment_command_64_data;
+      Ends.push_back(Seg.fileoff + Seg.filesize);
       break;
     }        
     }
@@ -555,7 +555,10 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
       O.SymTable.NameList.size() - (NumLocalSymbols + NumExtDefSymbols);
 }
 
-uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
+uint64_t MachOWriter::layoutSegments() {
+  bool IsExecutable = O.Header.FileType == MachO::HeaderFileType::MH_EXECUTE;
+  uint64_t Offset = IsExecutable ? 0 : (headerSize() + O.Header.SizeOfCmds);
+  errs() << "IsExecutable: " << IsExecutable << "\n";
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     StringRef Segname;
@@ -591,20 +594,37 @@ uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
 
     uint64_t SegOffset = Offset;
     uint64_t SegFileSize = 0;
+    uint64_t VMSize = 0;
     for (auto &Sec : LC.Sections) {
-      if (!Sec.isVirtualSection()) {
-        errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr << "\n";
-        uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
-        Sec.Offset = SegOffset + SectOffset;
-        Sec.Size = Sec.isVirtualSection() ? 0 : Sec.Content.size();
-        SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
+      if (IsExecutable) {
+       if (!Sec.isVirtualSection()) {
+         errs() << "SectOff: " << Sec.Sectname << ", addr=" << Sec.Addr << "\n";
+         uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
+         Sec.Offset = SegOffset + SectOffset;
+         Sec.Size = Sec.isVirtualSection() ? 0 : Sec.Content.size();
+         SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
+       }
+      } else {
+        if (!Sec.isVirtualSection()) {
+         errs() << "SectOff: " << Sec.Sectname << ", segOff=" << SegOffset << ", sz=" << SegFileSize << "\n";
+          auto FilePaddingSize =
+              OffsetToAlignment(SegFileSize, 1 << Sec.Align);
+          Sec.Offset = SegOffset + SegFileSize + FilePaddingSize;
+          Sec.Size = Sec.Content.size();
+          SegFileSize += FilePaddingSize + Sec.Size;
+        }
+  
+        VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
       }
     }
 
-    uint64_t VMSize = 0;
-    Offset = alignTo(Offset + SegFileSize, PageSize);
-    SegFileSize = alignTo(SegFileSize, PageSize);
-    VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
+    if (IsExecutable) {
+      Offset = alignTo(Offset + SegFileSize, PageSize);
+      SegFileSize = alignTo(SegFileSize, PageSize);
+      VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
+    } else {
+      Offset += SegFileSize;
+    }
 
     errs() << "layout: seg='" << Segname << "', offset=" << SegOffset << ", size=" << SegFileSize << "\n";
 
@@ -765,8 +785,7 @@ Error MachOWriter::layoutTail(uint64_t Offset) {
 // Recomputes and updates offset and size fields in load commands and sections
 // since they could be modified.
 Error MachOWriter::layout() {
-  uint64_t Offset = 0;
-  Offset = layoutSegments(Offset);
+  uint64_t Offset = layoutSegments();
   Offset = layoutRelocations(Offset);
   return layoutTail(Offset);
 }

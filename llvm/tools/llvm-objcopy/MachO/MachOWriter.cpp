@@ -557,7 +557,6 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
 
 uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
   for (auto &LC : O.LoadCommands) {
-    // TODO: Handle the __PAGEZERO segment.
     auto &MLC = LC.MachOLoadCommand;
     StringRef Segname;
     uint64_t SegmentVmAddr = 0;
@@ -584,7 +583,8 @@ uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
     }
 
     if (Segname == "__LINKEDIT") {
-      // TODO:
+      // We update the __LINKEDIT segment later (in layoutTail).
+      assert(LC.Sections.empty() && "the __LINKEDIT segment has sections");
       LinkEditLoadCommand = &MLC;
       continue;
     }
@@ -602,10 +602,9 @@ uint64_t MachOWriter::layoutSegments(uint64_t Offset) {
     }
 
     uint64_t VMSize = 0;
-    Offset = alignTo(Offset + SegFileSize, 0x1000 /* FIXME: PAGE_SIZE */);
-    SegFileSize = alignTo(SegFileSize, 0x1000 /* FIXME: PAGE SIZE */);
-    SegOffset = Segname == "__PAGEZERO" ? 0 : SegOffset;
-    VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, 0x1000 /* FIXME: PAGE SIZE */);
+    Offset = alignTo(Offset + SegFileSize, PageSize);
+    SegFileSize = alignTo(SegFileSize, PageSize);
+    VMSize = Segname == "__PAGEZERO" ? SegmentVmSize : alignTo(SegFileSize, PageSize);
 
     errs() << "layout: seg='" << Segname << "', offset=" << SegOffset << ", size=" << SegFileSize << "\n";
 
@@ -646,52 +645,39 @@ uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
 }
 
 Error MachOWriter::layoutTail(uint64_t Offset) {
-  auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   // The order of LINKEDIT elements as follows:
   // rebase info, binding info, lazy binding info, weak binding info, export trie,
   // data-in-code, symbol table, indirect symbol table, symbol table strings.
+  uint64_t NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
   uint64_t StartOfLinkEdit = Offset;
-  uint64_t StartOfRebaseInfo = Offset;
-  uint64_t EndOfRebaseInfo = StartOfRebaseInfo + O.Rebases.Opcodes.size();
-  uint64_t StartOfBindingInfo = EndOfRebaseInfo;
-  uint64_t EndOfBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
-  uint64_t StartOfLazyBindingInfo = EndOfBindingInfo;
-  uint64_t EndOfLazyBindingInfo = StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
-  uint64_t StartOfWeakBindingInfo = EndOfLazyBindingInfo;
-  uint64_t EndOfWeakBindingInfo = StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
-  uint64_t StartOfExportTrie = EndOfWeakBindingInfo;
-  uint64_t EndOfExportTrie = StartOfExportTrie + O.Exports.Trie.size();
-  uint64_t StartOfFunctionStarts = EndOfExportTrie;
-  uint64_t EndOfFunctionStarts = StartOfFunctionStarts + O.FunctionStarts.Data.size();
-  uint64_t StartOfDataInCode = EndOfFunctionStarts;
-  uint64_t EndOfDataInCode = StartOfDataInCode + O.DataInCode.Data.size();
-  uint64_t StartOfSymbols = EndOfDataInCode;
-  uint64_t EndOfSymbols = StartOfSymbols + NListSize * O.SymTable.NameList.size();
-  uint64_t StartOfIndirectSymbols = EndOfSymbols;
-  uint64_t EndOfIndirectSymbols = StartOfIndirectSymbols + sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
-  uint64_t StartOfSymbolStrings = EndOfIndirectSymbols;
-  uint64_t EndOfSymbolStrings = StartOfSymbolStrings + strTableSize();
-  uint64_t LinkEditSize = EndOfSymbolStrings - StartOfLinkEdit;
-  errs() << "startoflinkedit: " << StartOfLinkEdit << "\n";
-  errs() << "StartOfSymbolStrings: " << StartOfSymbolStrings << "\n";
+  uint64_t StartOfRebaseInfo = StartOfLinkEdit;
+  uint64_t StartOfBindingInfo = StartOfRebaseInfo + O.Rebases.Opcodes.size();
+  uint64_t StartOfLazyBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
+  uint64_t StartOfWeakBindingInfo = StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
+  uint64_t StartOfExportTrie = StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
+  uint64_t StartOfFunctionStarts = StartOfExportTrie + O.Exports.Trie.size();
+  uint64_t StartOfDataInCode = StartOfFunctionStarts + O.FunctionStarts.Data.size();
+  uint64_t StartOfSymbols = StartOfDataInCode + O.DataInCode.Data.size();
+  uint64_t StartOfIndirectSymbols = StartOfSymbols + NListSize * O.SymTable.NameList.size();
+  uint64_t StartOfSymbolStrings = StartOfIndirectSymbols + sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+  uint64_t LinkEditSize = (StartOfSymbolStrings + strTableSize()) - StartOfLinkEdit;
 
+  // Now we have determined the layout of the contents of the __LINKEDIT
+  // segment. Update its load command.
   if (LinkEditLoadCommand) {
     MachO::macho_load_command *MLC = LinkEditLoadCommand;
-    errs() << "layout: LINKEDIT (" << MLC->segment_command_64_data.segname << "): " << StartOfLinkEdit << "\n";
     switch (LinkEditLoadCommand->load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       MLC->segment_command_data.cmdsize = sizeof(MachO::segment_command);
       MLC->segment_command_data.fileoff = StartOfLinkEdit;
-      MLC->segment_command_data.vmsize = alignTo(LinkEditSize, 0x1000 /* FIXME: PAGE_SIZE */);
+      MLC->segment_command_data.vmsize = alignTo(LinkEditSize, PageSize);
       MLC->segment_command_data.filesize = LinkEditSize;
-      MLC->segment_command_data.nsects = 0;
       break;
     case MachO::LC_SEGMENT_64:
       MLC->segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64);
       MLC->segment_command_64_data.fileoff = StartOfLinkEdit;
-      MLC->segment_command_64_data.vmsize = alignTo(LinkEditSize, 0x1000 /* FIXME: PAGE_SIZE */);
+      MLC->segment_command_64_data.vmsize = alignTo(LinkEditSize, PageSize);
       MLC->segment_command_64_data.filesize = LinkEditSize;
-      MLC->segment_command_64_data.nsects = 0;
       break;
     }  
   }

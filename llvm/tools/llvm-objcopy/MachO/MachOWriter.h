@@ -22,6 +22,7 @@ class MachOWriter {
   Object &O;
   bool Is64Bit;
   bool IsLittleEndian;
+  uint64_t PageSize;
   Buffer &B;
   // Points to the __LINKEDIT segment if exists.
   MachO::macho_load_command *LinkEditLoadCommand = nullptr;
@@ -57,8 +58,8 @@ class MachOWriter {
   void writeTail();
 
 public:
-  MachOWriter(Object &O, bool Is64Bit, bool IsLittleEndian, Buffer &B)
-      : O(O), Is64Bit(Is64Bit), IsLittleEndian(IsLittleEndian), B(B) {}
+  MachOWriter(Object &O, bool Is64Bit, bool IsLittleEndian, uint64_t PageSize, Buffer &B)
+      : O(O), Is64Bit(Is64Bit), IsLittleEndian(IsLittleEndian), PageSize(PageSize), B(B) {}
 
   size_t totalSize() const;
   Error finalize();

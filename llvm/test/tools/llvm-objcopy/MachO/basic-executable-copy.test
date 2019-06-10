@@ -2,10 +2,6 @@
 # RUN: llvm-objcopy %t %t2
 # RUN: cmp %t %t2
 
-# A real-world example.
-# RUN: llvm-objcopy %p/Inputs/executable.macho-x86_64 %t.realworld
-# RUN: cmp %p/Inputs/executable.macho-x86_64 %t.realworld
-
 --- !mach-o
 FileHeader:
   magic:           0xFEEDFACF

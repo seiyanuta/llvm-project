@@ -7,7 +7,7 @@
 # RUN: cmp %p/Inputs/dynamic.so %t.realworld
 
 --- !mach-o
-FileHeader:      
+FileHeader:
   magic:           0xFEEDFACF
   cputype:         0x01000007
   cpusubtype:      0x00000003
@@ -16,7 +16,7 @@ FileHeader:
   sizeofcmds:      1128
   flags:           0x00100085
   reserved:        0x00000000
-LoadCommands:    
+LoadCommands:
   - cmd:             LC_SEGMENT_64
     cmdsize:         392
     segname:         __TEXT
@@ -28,7 +28,7 @@ LoadCommands:
     initprot:        5
     nsects:          4
     flags:           0
-    Sections:        
+    Sections:
       - sectname:        __text
         segname:         __TEXT
         addr:            0x0000000000000F70
@@ -88,7 +88,7 @@ LoadCommands:
     initprot:        3
     nsects:          3
     flags:           0
-    Sections:        
+    Sections:
       - sectname:        __nl_symbol_ptr
         segname:         __DATA
         addr:            0x0000000000001000
@@ -138,7 +138,7 @@ LoadCommands:
     flags:           0
   - cmd:             LC_ID_DYLIB
     cmdsize:         40
-    dylib:           
+    dylib:
       name:            24
       timestamp:       1
       current_version: 0
@@ -192,7 +192,7 @@ LoadCommands:
     minos:           658944
     sdk:             658944
     ntools:          1
-    Tools:           
+    Tools:
       - tool:            3
         version:         29491968
   - cmd:             LC_SOURCE_VERSION
@@ -200,7 +200,7 @@ LoadCommands:
     version:         0
   - cmd:             LC_LOAD_DYLIB
     cmdsize:         56
-    dylib:           
+    dylib:
       name:            24
       timestamp:       2
       current_version: 82115073
@@ -215,19 +215,19 @@ LoadCommands:
     cmdsize:         16
     dataoff:         8280
     datasize:        0
-LinkEditData:    
-  RebaseOpcodes:   
+LinkEditData:
+  RebaseOpcodes:
     - Opcode:          REBASE_OPCODE_SET_TYPE_IMM
       Imm:             1
     - Opcode:          REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
       Imm:             1
-      ExtraData:       
+      ExtraData:
         - 0x0000000000000010
     - Opcode:          REBASE_OPCODE_DO_REBASE_IMM_TIMES
       Imm:             1
     - Opcode:          REBASE_OPCODE_DONE
       Imm:             0
-  BindOpcodes:     
+  BindOpcodes:
     - Opcode:          BIND_OPCODE_SET_DYLIB_ORDINAL_IMM
       Imm:             1
       Symbol:          ''
@@ -239,7 +239,7 @@ LinkEditData:
       Symbol:          ''
     - Opcode:          BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
       Imm:             1
-      ULEBExtraData:   
+      ULEBExtraData:
         - 0x0000000000000000
       Symbol:          ''
     - Opcode:          BIND_OPCODE_DO_BIND
@@ -248,10 +248,10 @@ LinkEditData:
     - Opcode:          BIND_OPCODE_DONE
       Imm:             0
       Symbol:          ''
-  LazyBindOpcodes: 
+  LazyBindOpcodes:
     - Opcode:          BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
       Imm:             1
-      ULEBExtraData:   
+      ULEBExtraData:
         - 0x0000000000000010
       Symbol:          ''
     - Opcode:          BIND_OPCODE_SET_DYLIB_ORDINAL_IMM
@@ -278,7 +278,7 @@ LinkEditData:
     - Opcode:          BIND_OPCODE_DONE
       Imm:             0
       Symbol:          ''
-  ExportTrie:      
+  ExportTrie:
     TerminalSize:    0
     NodeOffset:      0
     Name:            ''
@@ -286,7 +286,7 @@ LinkEditData:
     Address:         0x0000000000000000
     Other:           0x0000000000000000
     ImportName:      ''
-    Children:        
+    Children:
       - TerminalSize:    0
         NodeOffset:      5
         Name:            _
@@ -294,7 +294,7 @@ LinkEditData:
         Address:         0x0000000000000000
         Other:           0x0000000000000000
         ImportName:      ''
-        Children:        
+        Children:
           - TerminalSize:    3
             NodeOffset:      19
             Name:            my_rand
@@ -309,7 +309,7 @@ LinkEditData:
             Address:         0x0000000000001018
             Other:           0x0000000000000000
             ImportName:      ''
-  NameList:        
+  NameList:
     - n_strx:          2
       n_type:          0x0F
       n_sect:          7
@@ -330,7 +330,7 @@ LinkEditData:
       n_sect:          0
       n_desc:          256
       n_value:         0
-  StringTable:     
+  StringTable:
     - ' '
     - _a
     - _my_rand

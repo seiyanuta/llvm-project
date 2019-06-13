@@ -170,7 +170,6 @@ SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
   assert(nlist.n_strx < StrTable.size() &&
          "n_strx exceeds the size of the string table");
   SymbolEntry SE;
-  SE.Referenced = false;
   SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
   SE.n_type = nlist.n_type;
   SE.n_sect = nlist.n_sect;

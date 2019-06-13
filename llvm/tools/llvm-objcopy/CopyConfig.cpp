@@ -277,52 +277,52 @@ static Expected<const MachineInfo &> getMachineInfo(StringRef Arch) {
 }
 
 // FIXME: consolidate with the bfd parsing used by lld.
-static const StringMap<MachineInfo> OutputFormatMap{
-    // Name, {EMachine, 64bit, LittleEndian}
+static const StringMap<TargetInfo> TargetMap{
+    // Name, {FileFormat, {EMachine, 64bit, LittleEndian}}
     // x86
-    {"elf32-i386", {ELF::EM_386, false, true}},
-    {"elf32-x86-64", {ELF::EM_X86_64, false, true}},
-    {"elf64-x86-64", {ELF::EM_X86_64, true, true}},
+    {"elf32-i386", {FileFormat::ELF, {ELF::EM_386, false, true}}},
+    {"elf32-x86-64", {FileFormat::ELF, {ELF::EM_X86_64, false, true}}},
+    {"elf64-x86-64", {FileFormat::ELF, {ELF::EM_X86_64, true, true}}},
     // Intel MCU
-    {"elf32-iamcu", {ELF::EM_IAMCU, false, true}},
+    {"elf32-iamcu", {FileFormat::ELF, {ELF::EM_IAMCU, false, true}}},
     // ARM
-    {"elf32-littlearm", {ELF::EM_ARM, false, true}},
+    {"elf32-littlearm", {FileFormat::ELF, {ELF::EM_ARM, false, true}}},
     // ARM AArch64
-    {"elf64-aarch64", {ELF::EM_AARCH64, true, true}},
-    {"elf64-littleaarch64", {ELF::EM_AARCH64, true, true}},
+    {"elf64-aarch64", {FileFormat::ELF, {ELF::EM_AARCH64, true, true}}},
+    {"elf64-littleaarch64", {FileFormat::ELF, {ELF::EM_AARCH64, true, true}}},
     // RISC-V
-    {"elf32-littleriscv", {ELF::EM_RISCV, false, true}},
-    {"elf64-littleriscv", {ELF::EM_RISCV, true, true}},
+    {"elf32-littleriscv", {FileFormat::ELF, {ELF::EM_RISCV, false, true}}},
+    {"elf64-littleriscv", {FileFormat::ELF, {ELF::EM_RISCV, true, true}}},
     // PowerPC
-    {"elf32-powerpc", {ELF::EM_PPC, false, false}},
-    {"elf32-powerpcle", {ELF::EM_PPC, false, true}},
-    {"elf64-powerpc", {ELF::EM_PPC64, true, false}},
-    {"elf64-powerpcle", {ELF::EM_PPC64, true, true}},
+    {"elf32-powerpc", {FileFormat::ELF, {ELF::EM_PPC, false, false}}},
+    {"elf32-powerpcle", {FileFormat::ELF, {ELF::EM_PPC, false, true}}},
+    {"elf64-powerpc", {FileFormat::ELF, {ELF::EM_PPC64, true, false}}},
+    {"elf64-powerpcle", {FileFormat::ELF, {ELF::EM_PPC64, true, true}}},
     // MIPS
-    {"elf32-bigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-ntradbigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-ntradlittlemips", {ELF::EM_MIPS, false, true}},
-    {"elf32-tradbigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-tradlittlemips", {ELF::EM_MIPS, false, true}},
-    {"elf64-tradbigmips", {ELF::EM_MIPS, true, false}},
-    {"elf64-tradlittlemips", {ELF::EM_MIPS, true, true}},
+    {"elf32-bigmips", {FileFormat::ELF, {ELF::EM_MIPS, false, false}}},
+    {"elf32-ntradbigmips", {FileFormat::ELF, {ELF::EM_MIPS, false, false}}},
+    {"elf32-ntradlittlemips", {FileFormat::ELF, {ELF::EM_MIPS, false, true}}},
+    {"elf32-tradbigmips", {FileFormat::ELF, {ELF::EM_MIPS, false, false}}},
+    {"elf32-tradlittlemips", {FileFormat::ELF, {ELF::EM_MIPS, false, true}}},
+    {"elf64-tradbigmips", {FileFormat::ELF, {ELF::EM_MIPS, true, false}}},
+    {"elf64-tradlittlemips", {FileFormat::ELF, {ELF::EM_MIPS, true, true}}},
     // SPARC
-    {"elf32-sparc", {ELF::EM_SPARC, false, false}},
-    {"elf32-sparcel", {ELF::EM_SPARC, false, true}},
+    {"elf32-sparc", {FileFormat::ELF, {ELF::EM_SPARC, false, false}}},
+    {"elf32-sparcel", {FileFormat::ELF, {ELF::EM_SPARC, false, true}}},
 };
 
-static Expected<MachineInfo> getOutputFormatMachineInfo(StringRef Format) {
+static Expected<TargetInfo> getTargetInfoByTargetName(StringRef Format) {
   StringRef OriginalFormat = Format;
   bool IsFreeBSD = Format.consume_back("-freebsd");
-  auto Iter = OutputFormatMap.find(Format);
-  if (Iter == std::end(OutputFormatMap))
+  auto Iter = TargetMap.find(Format);
+  if (Iter == std::end(TargetMap))
     return createStringError(errc::invalid_argument,
                              "invalid output format: '%s'",
                              OriginalFormat.str().c_str());
-  MachineInfo MI = Iter->getValue();
+  auto Target = Iter->getValue();
   if (IsFreeBSD)
-    MI.OSABI = ELF::ELFOSABI_FREEBSD;
-  return {MI};
+    Target.Machine.OSABI = ELF::ELFOSABI_FREEBSD;
+  return {Target};
 }
 
 static Error addSymbolsFromFile(std::vector<NameOrRegex> &Symbols,
@@ -444,14 +444,18 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
         "--target cannot be used with --input-target or --output-target");
 
   bool UseRegex = InputArgs.hasArg(OBJCOPY_regex);
+  StringRef InputFormat, OutputFormat;
   if (InputArgs.hasArg(OBJCOPY_target)) {
-    Config.InputFormat = InputArgs.getLastArgValue(OBJCOPY_target);
-    Config.OutputFormat = InputArgs.getLastArgValue(OBJCOPY_target);
+    InputFormat = InputArgs.getLastArgValue(OBJCOPY_target);
+    OutputFormat = InputArgs.getLastArgValue(OBJCOPY_target);
   } else {
-    Config.InputFormat = InputArgs.getLastArgValue(OBJCOPY_input_target);
-    Config.OutputFormat = InputArgs.getLastArgValue(OBJCOPY_output_target);
+    InputFormat = InputArgs.getLastArgValue(OBJCOPY_input_target);
+    OutputFormat = InputArgs.getLastArgValue(OBJCOPY_output_target);
   }
-  if (Config.InputFormat == "binary") {
+  if (InputFormat.empty())
+    Config.InputFormat = FileFormat::Unspecified;
+  else if (InputFormat == "binary") {
+    Config.InputFormat = FileFormat::Binary;
     auto BinaryArch = InputArgs.getLastArgValue(OBJCOPY_binary_architecture);
     if (BinaryArch.empty())
       return createStringError(
@@ -461,13 +465,23 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
     if (!MI)
       return MI.takeError();
     Config.BinaryArch = *MI;
-  }
-  if (!Config.OutputFormat.empty() && Config.OutputFormat != "binary" &&
-      Config.OutputFormat != "ihex") {
-    Expected<MachineInfo> MI = getOutputFormatMachineInfo(Config.OutputFormat);
-    if (!MI)
-      return MI.takeError();
-    Config.OutputArch = *MI;
+  } else
+    return createStringError(errc::invalid_argument,
+                             "unsupported input format: '%s'",
+                             InputFormat.str().c_str());
+
+  if (OutputFormat.empty())
+    Config.OutputFormat = FileFormat::Unspecified;
+  else if (OutputFormat == "binary")
+    Config.OutputFormat = FileFormat::Binary;
+  else if (OutputFormat == "ihex")
+    Config.OutputFormat = FileFormat::IHex;
+  else {
+    Expected<TargetInfo> Target = getTargetInfoByTargetName(OutputFormat);
+    if (!Target)
+      return Target.takeError();
+    Config.OutputFormat = Target->Format;
+    Config.OutputArch = Target->Machine;
   }
 
   if (auto Arg = InputArgs.getLastArg(OBJCOPY_compress_debug_sections,

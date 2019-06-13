@@ -26,6 +26,13 @@
 namespace llvm {
 namespace objcopy {
 
+enum class FileFormat {
+  Unspecified,
+  ELF,
+  Binary,
+  IHex,
+};
+
 // This type keeps track of the machine info for various architectures. This
 // lets us map architecture names to ELF types and the e_machine value of the
 // ELF file.
@@ -41,6 +48,11 @@ struct MachineInfo {
   uint8_t OSABI;
   bool Is64Bit;
   bool IsLittleEndian;
+};
+
+struct TargetInfo {
+  FileFormat Format;
+  MachineInfo Machine; 
 };
 
 // Flags set by --set-section-flags or --rename-section. Interpretation of these
@@ -104,9 +116,9 @@ struct NewSymbolInfo {
 struct CopyConfig {
   // Main input/output options
   StringRef InputFilename;
-  StringRef InputFormat;
+  FileFormat InputFormat;
   StringRef OutputFilename;
-  StringRef OutputFormat;
+  FileFormat OutputFormat;
 
   // Only applicable for --input-format=binary
   MachineInfo BinaryArch;

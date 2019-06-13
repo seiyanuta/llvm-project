@@ -1,0 +1,6 @@
+# RUN: llvm-mc -assemble -triple x86_64-apple-darwin9 -filetype=obj %p/Inputs/many-locals.s -o %t
+# RUN: llvm-objcopy --strip-all %t %t.stripped
+# RUN: llvm-readobj --symbols %t.stripped | FileCheck %s
+
+# CHECK:      Symbols [
+# CHECK-NEXT: ]

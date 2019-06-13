@@ -31,6 +31,7 @@ class MachOWriter {
 
   void updateDySymTab(MachO::macho_load_command &MLC);
   void updateSizeOfCmds();
+  void updateSymbolIndexes();
   Error layout();
 
   void writeHeader();

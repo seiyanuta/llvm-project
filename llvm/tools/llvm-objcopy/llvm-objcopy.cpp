@@ -223,7 +223,7 @@ static Error executeObjcopy(const CopyConfig &Config) {
       return createFileError(Config.InputFilename, EC);
 
   typedef Error (*ProcessRawFn)(const CopyConfig &, MemoryBuffer &, Buffer &);
-  ProcessRawFn ProcessRaw = nullptr;
+  ProcessRawFn ProcessRaw;
   switch (Config.InputFormat) {
   case FileFormat::Binary:
     ProcessRaw = executeObjcopyOnRawBinary;
@@ -231,6 +231,8 @@ static Error executeObjcopy(const CopyConfig &Config) {
   case FileFormat::IHex:
     ProcessRaw = executeObjcopyOnIHex;
     break;
+  default:
+    ProcessRaw = nullptr;
   }
 
   if (ProcessRaw) {

@@ -311,9 +311,6 @@ static const StringMap<TargetInfo> TargetMap{
     {"elf32-tradlittlemips", {FileFormat::ELF, {ELF::EM_MIPS, false, true}}},
     {"elf64-tradbigmips", {FileFormat::ELF, {ELF::EM_MIPS, true, false}}},
     {"elf64-tradlittlemips", {FileFormat::ELF, {ELF::EM_MIPS, true, true}}},
-    // SPARC
-    {"elf32-sparc", {FileFormat::ELF, {ELF::EM_SPARC, false, false}}},
-    {"elf32-sparcel", {FileFormat::ELF, {ELF::EM_SPARC, false, true}}},
 };
 
 static Expected<TargetInfo> getTargetInfoByTargetName(StringRef Format) {

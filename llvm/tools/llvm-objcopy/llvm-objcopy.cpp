@@ -138,7 +138,7 @@ static Error executeObjcopyOnRawBinary(const CopyConfig &Config,
   case FileFormat::ELF:
   // FIXME: Currently, we call elf::executeObjcopyOnRawBinary even if the
   // output format is binary/ihex or it's not given. This behavior differs from
-  // GNU objcopy. See https://bugs.llvm.org/show_bug.cgi?id=42171
+  // GNU objcopy. See https://bugs.llvm.org/show_bug.cgi?id=42171 for details.
   case FileFormat::Binary:
   case FileFormat::IHex:
   case FileFormat::Unspecified:

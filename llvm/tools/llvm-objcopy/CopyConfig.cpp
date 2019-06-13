@@ -276,6 +276,11 @@ static Expected<const MachineInfo &> getMachineInfo(StringRef Arch) {
   return Iter->getValue();
 }
 
+struct TargetInfo {
+  FileFormat Format;
+  MachineInfo Machine;
+};
+
 // FIXME: consolidate with the bfd parsing used by lld.
 static const StringMap<TargetInfo> TargetMap{
     // Name, {FileFormat, {EMachine, 64bit, LittleEndian}}
@@ -454,6 +459,8 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
   }
   if (InputFormat.empty())
     Config.InputFormat = FileFormat::Unspecified;
+  else if (InputFormat == "ihex")
+    Config.InputFormat = FileFormat::IHex;
   else if (InputFormat == "binary") {
     Config.InputFormat = FileFormat::Binary;
     auto BinaryArch = InputArgs.getLastArgValue(OBJCOPY_binary_architecture);

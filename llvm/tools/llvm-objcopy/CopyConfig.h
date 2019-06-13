@@ -50,11 +50,6 @@ struct MachineInfo {
   bool IsLittleEndian;
 };
 
-struct TargetInfo {
-  FileFormat Format;
-  MachineInfo Machine; 
-};
-
 // Flags set by --set-section-flags or --rename-section. Interpretation of these
 // is format-specific and not all flags are meaningful for all object file
 // formats. This is a bitmask; many section flags may be set.

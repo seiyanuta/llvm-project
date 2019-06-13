@@ -50,7 +50,7 @@ struct Section {
   uint32_t Reserved3;
 
   StringRef Content;
-  std::vector<MachO::any_relocation_info> Relocations;
+  std::vector<RelocationInfo> Relocations;
 
   MachO::SectionType getType() const {
     return static_cast<MachO::SectionType>(Flags & MachO::SECTION_TYPE);

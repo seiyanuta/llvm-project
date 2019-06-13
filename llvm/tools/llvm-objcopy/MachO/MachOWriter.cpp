@@ -508,8 +508,9 @@ Error MachOWriter::layout() {
     auto cmd = MLC.load_command_data.cmd;
     switch (cmd) {
     case MachO::LC_SYMTAB:
-      MLC.symtab_command_data.symoff = Offset;
       MLC.symtab_command_data.nsyms = O.SymTable.Symbols.size();
+      MLC.symtab_command_data.strsize = O.StrTableBuilder.getSize();
+      MLC.symtab_command_data.symoff = Offset;
       Offset += NListSize * MLC.symtab_command_data.nsyms;
       MLC.symtab_command_data.stroff = Offset;
       Offset += MLC.symtab_command_data.strsize;
@@ -550,8 +551,15 @@ Error MachOWriter::layout() {
   return Error::success();
 }
 
+void MachOWriter::constructStringTable() {
+  for (auto &Sym : O.SymTable.Symbols)
+    O.StrTableBuilder.add(Sym->Name);
+  O.StrTableBuilder.finalize();
+}
+
 Error MachOWriter::finalize() {
   updateSizeOfCmds();
+  constructStringTable();
 
   if (auto E = layout())
     return E;
@@ -560,19 +568,6 @@ Error MachOWriter::finalize() {
 }
 
 Error MachOWriter::write() {
-  if (O.SymTabCommandIndex) {
-    MachO::symtab_command &SymTabCommand =
-        O.LoadCommands[*O.SymTabCommandIndex]
-            .MachOLoadCommand.symtab_command_data;
-
-    // FIXME: do this before writeLoadCommands()
-    for (auto &Sym : O.SymTable.Symbols)
-      O.StrTableBuilder.add(Sym->Name);
-    O.StrTableBuilder.finalize();
-    SymTabCommand.nsyms = O.SymTable.Symbols.size();
-    SymTabCommand.strsize = O.StrTableBuilder.getSize();
-  }
-
   if (Error E = B.allocate(totalSize()))
     return E;
   memset(B.getBufferStart(), 0, totalSize());

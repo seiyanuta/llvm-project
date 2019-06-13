@@ -216,12 +216,14 @@ void MachOWriter::writeSections() {
       for (size_t Index = 0; Index < Sec.Relocations.size(); ++Index) {
         auto RelocInfo = Sec.Relocations[Index];
         if (!RelocInfo.Scattered) {
-          auto *Info = reinterpret_cast<MachO::relocation_info *>(&RelocInfo.Info);
+          auto *Info =
+              reinterpret_cast<MachO::relocation_info *>(&RelocInfo.Info);
           Info->r_symbolnum = RelocInfo.Symbol->Index;
         }
 
         if (IsLittleEndian != sys::IsLittleEndianHost)
-          MachO::swapStruct(reinterpret_cast<MachO::any_relocation_info &>(RelocInfo.Info));
+          MachO::swapStruct(
+              reinterpret_cast<MachO::any_relocation_info &>(RelocInfo.Info));
         memcpy(B.getBufferStart() + Sec.RelOff +
                    Index * sizeof(MachO::any_relocation_info),
                &RelocInfo.Info, sizeof(RelocInfo.Info));
@@ -230,7 +232,8 @@ void MachOWriter::writeSections() {
 }
 
 template <typename NListType>
-void writeNListEntry(const SymbolEntry &SE, bool IsLittleEndian, char *&Out, uint32_t Nstrx) {
+void writeNListEntry(const SymbolEntry &SE, bool IsLittleEndian, char *&Out,
+                     uint32_t Nstrx) {
   NListType ListEntry;
   ListEntry.n_strx = Nstrx;
   ListEntry.n_type = SE.n_type;
@@ -251,7 +254,7 @@ void MachOWriter::writeSymbolTable() {
       O.LoadCommands[*O.SymTabCommandIndex]
           .MachOLoadCommand.symtab_command_data;
 
-  uint8_t *StrTable = (uint8_t *) B.getBufferStart() + SymTabCommand.stroff;
+  uint8_t *StrTable = (uint8_t *)B.getBufferStart() + SymTabCommand.stroff;
   O.StrTableBuilder.write(StrTable);
 }
 
@@ -262,8 +265,9 @@ void MachOWriter::writeStringTable() {
       O.LoadCommands[*O.SymTabCommandIndex]
           .MachOLoadCommand.symtab_command_data;
 
-  char *SymTable = (char *) B.getBufferStart() + SymTabCommand.symoff;
-  for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end(); Iter++) {
+  char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
+  for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end();
+       Iter++) {
     std::unique_ptr<SymbolEntry> &Sym = *Iter;
     auto Nstrx = O.StrTableBuilder.getOffset(Sym->Name);
 

@@ -81,9 +81,11 @@ struct LoadCommand {
   std::vector<Section> Sections;
 };
 
-// A symbol information. Fields which starts with "n_" are same as them in the nlist.
+// A symbol information. Fields which starts with "n_" are same as them in the
+// nlist.
 struct SymbolEntry {
-  // True if it is referenced from other data structures like a relocation information.
+  // True if it is referenced from other data structures like a relocation
+  // information.
   bool Referenced;
   std::string Name;
   int Index;
@@ -100,7 +102,8 @@ struct SymbolTable {
   std::vector<std::unique_ptr<SymbolEntry>> Symbols;
 
   SymbolEntry *getSymbolByIndex(uint32_t Index);
-  void removeSymbols(function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove);
+  void removeSymbols(
+      function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove);
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB

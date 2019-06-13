@@ -101,7 +101,9 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
       RelocationInfo R;
       R.Symbol = nullptr; // We'll fill this field later.
       R.Info = MachOObj.getRelocation(RI->getRawDataRefImpl());
-      R.Scattered = reinterpret_cast<MachO::scattered_relocation_info *>(&R.Info)->r_scattered;
+      R.Scattered =
+          reinterpret_cast<MachO::scattered_relocation_info *>(&R.Info)
+              ->r_scattered;
       S.Relocations.push_back(R);
     }
 
@@ -163,8 +165,10 @@ void MachOReader::readLoadCommands(Object &O) const {
   }
 }
 
-template <typename nlist_t> SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
-  assert(nlist.n_strx < StrTable.size() && "n_strx exceeds the size of the string table");
+template <typename nlist_t>
+SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
+  assert(nlist.n_strx < StrTable.size() &&
+         "n_strx exceeds the size of the string table");
   SymbolEntry SE;
   SE.Referenced = false;
   SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
@@ -180,10 +184,12 @@ void MachOReader::readSymbolTable(Object &O) const {
   for (auto Symbol : MachOObj.symbols()) {
     SymbolEntry SE =
         (MachOObj.is64Bit()
-            ? constructSymbolEntry<MachO::nlist_64>(
-                  StrTable, MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
-            : constructSymbolEntry<MachO::nlist>(
-                  StrTable, MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl())));
+             ? constructSymbolEntry<MachO::nlist_64>(
+                   StrTable,
+                   MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
+             : constructSymbolEntry<MachO::nlist>(
+                   StrTable,
+                   MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl())));
 
     O.SymTable.Symbols.push_back(llvm::make_unique<SymbolEntry>(SE));
   }
@@ -194,7 +200,7 @@ void MachOReader::setSymbolInRelocationInfo(Object &O) const {
     for (auto &Sec : LC.Sections)
       for (auto &Reloc : Sec.Relocations)
         if (!Reloc.Scattered) {
-          auto *Info = reinterpret_cast<MachO::relocation_info*>(&Reloc.Info);
+          auto *Info = reinterpret_cast<MachO::relocation_info *>(&Reloc.Info);
           Reloc.Symbol = O.SymTable.getSymbolByIndex(Info->r_symbolnum);
         }
 }

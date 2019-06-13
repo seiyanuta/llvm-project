@@ -1,5 +1,5 @@
-#include "../llvm-objcopy.h"
 #include "Object.h"
+#include "../llvm-objcopy.h"
 
 namespace llvm {
 namespace objcopy {
@@ -10,8 +10,11 @@ SymbolEntry *SymbolTable::getSymbolByIndex(uint32_t Index) {
   return const_cast<SymbolEntry *>(Symbols[Index].get());
 }
 
-void SymbolTable::removeSymbols(function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove) {
-  Symbols.erase(std::remove_if(std::begin(Symbols), std::end(Symbols), ToRemove), std::end(Symbols));
+void SymbolTable::removeSymbols(
+    function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove) {
+  Symbols.erase(
+      std::remove_if(std::begin(Symbols), std::end(Symbols), ToRemove),
+      std::end(Symbols));
 }
 
 } // end namespace macho

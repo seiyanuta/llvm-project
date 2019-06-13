@@ -226,6 +226,8 @@ struct Object {
   Optional<size_t> SymTabCommandIndex;
   /// The index of LC_DYLD_INFO or LC_DYLD_INFO_ONLY load command if present.
   Optional<size_t> DyLdInfoCommandIndex;
+
+  StringTableBuilder StrTableBuilder{StringTableBuilder::MachO};
 };
 
 } // end namespace macho

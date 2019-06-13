@@ -191,7 +191,7 @@ void MachOReader::readSymbolTable(Object &O) const {
 
 void MachOReader::setSymbolInRelocationInfo(Object &O) const {
   for (auto &LC : O.LoadCommands)
-    for (auto &Sec : LC->Sections)
+    for (auto &Sec : LC.Sections)
       for (auto &Reloc : Sec.Relocations)
         if (!Reloc.Scattered) {
           auto *Info = reinterpret_cast<MachO::relocation_info*>(&Reloc.Info);

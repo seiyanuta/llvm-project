@@ -26,16 +26,8 @@ size_t MachOWriter::headerSize() const {
 size_t MachOWriter::loadCommandsSize() const { return O.Header.SizeOfCmds; }
 
 size_t MachOWriter::symTableSize() const {
-  return O.SymTable.NameList.size() *
+  return O.SymTable.Symbols.size() *
          (Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist));
-}
-
-size_t MachOWriter::strTableSize() const {
-  size_t S = 0;
-  for (const auto &Str : O.StrTable.Strings)
-    S += Str.size();
-  S += (O.StrTable.Strings.empty() ? 0 : O.StrTable.Strings.size() - 1);
-  return S;
 }
 
 size_t MachOWriter::totalSize() const {
@@ -48,16 +40,10 @@ size_t MachOWriter::totalSize() const {
     const MachO::symtab_command &SymTabCommand =
         O.LoadCommands[*O.SymTabCommandIndex]
             .MachOLoadCommand.symtab_command_data;
-    if (SymTabCommand.symoff) {
-      assert((SymTabCommand.nsyms == O.SymTable.NameList.size()) &&
-             "Incorrect number of symbols");
+    if (SymTabCommand.symoff)
       Ends.push_back(SymTabCommand.symoff + symTableSize());
-    }
-    if (SymTabCommand.stroff) {
-      assert((SymTabCommand.strsize == strTableSize()) &&
-             "Incorrect string table size");
+    if (SymTabCommand.stroff)
       Ends.push_back(SymTabCommand.stroff + SymTabCommand.strsize);
-    }
   }
   if (O.DyLdInfoCommandIndex) {
     const MachO::dyld_info_command &DyLdInfoCommand =
@@ -126,6 +112,14 @@ void MachOWriter::writeHeader() {
   auto HeaderSize =
       Is64Bit ? sizeof(MachO::mach_header_64) : sizeof(MachO::mach_header);
   memcpy(B.getBufferStart(), &Header, HeaderSize);
+}
+
+void MachOWriter::updateSymbolIndexes() {
+  auto Index = 0;
+  for (auto &Symbol : O.SymTable.Symbols) {
+    Symbol->Index = Index;
+    Index++;
+  }
 }
 
 void MachOWriter::writeLoadCommands() {
@@ -253,17 +247,22 @@ void writeNListEntry(const SymbolEntry &SE, bool IsLittleEndian, char *&Out, uin
 void MachOWriter::writeSymbolTable() {
   if (!O.SymTabCommandIndex)
     return;
+  const MachO::symtab_command &SymTabCommand =
+      O.LoadCommands[*O.SymTabCommandIndex]
+          .MachOLoadCommand.symtab_command_data;
 
-  uint8_t *StrTable = (uint8_t *) B.getBufferStart() + O.SymTabCommand->stroff;
-  errs() << "StrTable: size=" << O.StrTableBuilder.getSize() << ", actual=" << O.SymTabCommand->strsize << "\n";
+  uint8_t *StrTable = (uint8_t *) B.getBufferStart() + SymTabCommand.stroff;
   O.StrTableBuilder.write(StrTable);
 }
 
 void MachOWriter::writeStringTable() {
   if (!O.SymTabCommandIndex)
     return;
+  const MachO::symtab_command &SymTabCommand =
+      O.LoadCommands[*O.SymTabCommandIndex]
+          .MachOLoadCommand.symtab_command_data;
 
-  char *SymTable = (char *) B.getBufferStart() + O.SymTabCommand->symoff;
+  char *SymTable = (char *) B.getBufferStart() + SymTabCommand.symoff;
   for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end(); Iter++) {
     std::unique_ptr<SymbolEntry> &Sym = *Iter;
     auto Nstrx = O.StrTableBuilder.getOffset(Sym->Name);
@@ -506,7 +505,7 @@ Error MachOWriter::layout() {
     switch (cmd) {
     case MachO::LC_SYMTAB:
       MLC.symtab_command_data.symoff = Offset;
-      MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
+      MLC.symtab_command_data.nsyms = O.SymTable.Symbols.size();
       Offset += NListSize * MLC.symtab_command_data.nsyms;
       MLC.symtab_command_data.stroff = Offset;
       Offset += MLC.symtab_command_data.strsize;
@@ -557,13 +556,17 @@ Error MachOWriter::finalize() {
 }
 
 Error MachOWriter::write() {
-  if (O.SymTabCommand) {
+  if (O.SymTabCommandIndex) {
+    MachO::symtab_command &SymTabCommand =
+        O.LoadCommands[*O.SymTabCommandIndex]
+            .MachOLoadCommand.symtab_command_data;
+
     // FIXME: do this before writeLoadCommands()
     for (auto &Sym : O.SymTable.Symbols)
       O.StrTableBuilder.add(Sym->Name);
     O.StrTableBuilder.finalize();
-    O.SymTabCommand->nsyms = O.SymTable.Symbols.size();
-    O.SymTabCommand->strsize = O.StrTableBuilder.getSize();
+    SymTabCommand.nsyms = O.SymTable.Symbols.size();
+    SymTabCommand.strsize = O.StrTableBuilder.getSize();
   }
 
   if (Error E = B.allocate(totalSize()))

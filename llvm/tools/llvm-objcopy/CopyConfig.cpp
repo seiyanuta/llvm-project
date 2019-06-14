@@ -321,7 +321,7 @@ static Expected<TargetInfo> getTargetInfoByTargetName(StringRef Format) {
     return createStringError(errc::invalid_argument,
                              "invalid output format: '%s'",
                              OriginalFormat.str().c_str());
-  auto Target = Iter->getValue();
+  TargetInfo Target = Iter->getValue();
   if (IsFreeBSD)
     Target.Machine.OSABI = ELF::ELFOSABI_FREEBSD;
   return {Target};

@@ -40,10 +40,16 @@ size_t MachOWriter::totalSize() const {
     const MachO::symtab_command &SymTabCommand =
         O.LoadCommands[*O.SymTabCommandIndex]
             .MachOLoadCommand.symtab_command_data;
-    if (SymTabCommand.symoff)
+    if (SymTabCommand.symoff) {
+      assert((SymTabCommand.nsyms == O.SymTable.Symbols.size()) &&
+             "Incorrect number of symbols");
       Ends.push_back(SymTabCommand.symoff + symTableSize());
-    if (SymTabCommand.stroff)
+    }
+    if (SymTabCommand.stroff) {
+      assert((SymTabCommand.strsize == O.StrTableBuilder.getSize()) &&
+             "Incorrect string table size");
       Ends.push_back(SymTabCommand.stroff + SymTabCommand.strsize);
+    }
   }
   if (O.DyLdInfoCommandIndex) {
     const MachO::dyld_info_command &DyLdInfoCommand =

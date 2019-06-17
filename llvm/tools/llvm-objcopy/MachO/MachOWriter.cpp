@@ -84,6 +84,36 @@ size_t MachOWriter::totalSize() const {
     }
   }
 
+  if (O.DySymTabCommandIndex) {
+    const MachO::dysymtab_command &DySymTabCommand =
+        O.LoadCommands[*O.DySymTabCommandIndex]
+            .MachOLoadCommand.dysymtab_command_data;
+
+    if (DySymTabCommand.indirectsymoff)
+      Ends.push_back(DySymTabCommand.indirectsymoff +
+                     sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
+  }
+
+  if (O.DataInCodeCommandIndex) {
+    const MachO::linkedit_data_command &LinkEditDataCommand =
+        O.LoadCommands[*O.DataInCodeCommandIndex]
+            .MachOLoadCommand.linkedit_data_command_data;
+
+    if (LinkEditDataCommand.dataoff)
+      Ends.push_back(LinkEditDataCommand.dataoff +
+                     LinkEditDataCommand.datasize);
+  }
+
+  if (O.FunctionStartsCommandIndex) {
+    const MachO::linkedit_data_command &LinkEditDataCommand =
+        O.LoadCommands[*O.FunctionStartsCommandIndex]
+            .MachOLoadCommand.linkedit_data_command_data;
+
+    if (LinkEditDataCommand.dataoff)
+      Ends.push_back(LinkEditDataCommand.dataoff +
+                     LinkEditDataCommand.datasize);
+  }
+
   // Otherwise, use the last section / reloction.
   for (const auto &LC : O.LoadCommands)
     for (const auto &S : LC.Sections) {
@@ -344,6 +374,45 @@ void MachOWriter::writeExportInfo() {
   memcpy(Out, O.Exports.Trie.data(), O.Exports.Trie.size());
 }
 
+void MachOWriter::writeIndirectSymbolTable() {
+  if (!O.DySymTabCommandIndex)
+    return;
+
+  const MachO::dysymtab_command &DySymTabCommand =
+      O.LoadCommands[*O.DySymTabCommandIndex]
+          .MachOLoadCommand.dysymtab_command_data;
+
+  char *Out = (char *)B.getBufferStart() + DySymTabCommand.indirectsymoff;
+  assert((DySymTabCommand.nindirectsyms == O.IndirectSymTable.Symbols.size()) &&
+         "Incorrect indirect symbol table size");
+  memcpy(Out, O.IndirectSymTable.Symbols.data(),
+         sizeof(uint32_t) * O.IndirectSymTable.Symbols.size());
+}
+
+void MachOWriter::writeDataInCodeData() {
+  if (!O.DataInCodeCommandIndex)
+    return;
+  const MachO::linkedit_data_command &LinkEditDataCommand =
+      O.LoadCommands[*O.DataInCodeCommandIndex]
+          .MachOLoadCommand.linkedit_data_command_data;
+  char *Out = (char *)B.getBufferStart() + LinkEditDataCommand.dataoff;
+  assert((LinkEditDataCommand.datasize == O.DataInCode.Data.size()) &&
+         "Incorrect data in code data size");
+  memcpy(Out, O.DataInCode.Data.data(), O.DataInCode.Data.size());
+}
+
+void MachOWriter::writeFunctionStartsData() {
+  if (!O.FunctionStartsCommandIndex)
+    return;
+  const MachO::linkedit_data_command &LinkEditDataCommand =
+      O.LoadCommands[*O.FunctionStartsCommandIndex]
+          .MachOLoadCommand.linkedit_data_command_data;
+  char *Out = (char *)B.getBufferStart() + LinkEditDataCommand.dataoff;
+  assert((LinkEditDataCommand.datasize == O.FunctionStarts.Data.size()) &&
+         "Incorrect function starts data size");
+  memcpy(Out, O.FunctionStarts.Data.data(), O.FunctionStarts.Data.size());
+}
+
 void MachOWriter::writeTail() {
   typedef void (MachOWriter::*WriteHandlerType)(void);
   typedef std::pair<uint64_t, WriteHandlerType> WriteOperation;
@@ -379,6 +448,36 @@ void MachOWriter::writeTail() {
           {DyLdInfoCommand.export_off, &MachOWriter::writeExportInfo});
   }
 
+  if (O.DySymTabCommandIndex) {
+    const MachO::dysymtab_command &DySymTabCommand =
+        O.LoadCommands[*O.DySymTabCommandIndex]
+            .MachOLoadCommand.dysymtab_command_data;
+
+    if (DySymTabCommand.indirectsymoff)
+      Queue.push_back({DySymTabCommand.indirectsymoff,
+                       &MachOWriter::writeIndirectSymbolTable});
+  }
+
+  if (O.DataInCodeCommandIndex) {
+    const MachO::linkedit_data_command &LinkEditDataCommand =
+        O.LoadCommands[*O.DataInCodeCommandIndex]
+            .MachOLoadCommand.linkedit_data_command_data;
+
+    if (LinkEditDataCommand.dataoff)
+      Queue.push_back(
+          {LinkEditDataCommand.dataoff, &MachOWriter::writeDataInCodeData});
+  }
+
+  if (O.FunctionStartsCommandIndex) {
+    const MachO::linkedit_data_command &LinkEditDataCommand =
+        O.LoadCommands[*O.FunctionStartsCommandIndex]
+            .MachOLoadCommand.linkedit_data_command_data;
+
+    if (LinkEditDataCommand.dataoff)
+      Queue.push_back(
+          {LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData});
+  }
+
   llvm::sort(Queue, [](const WriteOperation &LHS, const WriteOperation &RHS) {
     return LHS.first < RHS.first;
   });
@@ -387,12 +486,11 @@ void MachOWriter::writeTail() {
     (this->*WriteOp.second)();
 }
 
-void MachOWriter::updateSizeOfCmds() {
-  auto Size = 0;
+uint32_t MachOWriter::computeSizeOfCmds() {
+  uint32_t Size = 0;
   for (const auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
-
     switch (cmd) {
     case MachO::LC_SEGMENT:
       Size += sizeof(MachO::segment_command) +
@@ -407,14 +505,14 @@ void MachOWriter::updateSizeOfCmds() {
     switch (cmd) {
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
   case MachO::LCName:                                                          \
-    Size += sizeof(MachO::LCStruct);                                           \
+    Size += sizeof(MachO::LCStruct) + LC.Payload.size();                       \
     break;
 #include "llvm/BinaryFormat/MachO.def"
 #undef HANDLE_LOAD_COMMAND
     }
   }
 
-  O.Header.SizeOfCmds = Size;
+  return Size;
 }
 
 // Updates the index and the number of local/external/undefined symbols. Here we
@@ -450,7 +548,7 @@ void MachOWriter::updateDySymTab(MachO::macho_load_command &MLC) {
 
 // Recomputes and updates offset and size fields in load commands and sections
 // since they could be modified.
-Error MachOWriter::layout() {
+uint64_t MachOWriter::layoutSegments() {
   auto SizeOfCmds = loadCommandsSize();
   auto Offset = headerSize() + SizeOfCmds;
   O.Header.NCmds = O.LoadCommands.size();
@@ -459,6 +557,31 @@ Error MachOWriter::layout() {
   // Lay out sections.
   for (auto &LC : O.LoadCommands) {
     uint64_t FileOff = Offset;
+    auto &MLC = LC.MachOLoadCommand;
+    StringRef Segname;
+    switch (MLC.load_command_data.cmd) {
+    case MachO::LC_SEGMENT:
+      Segname = StringRef(MLC.segment_command_data.segname,
+                          strnlen(MLC.segment_command_data.segname,
+                                  sizeof(MLC.segment_command_data.segname)));
+      break;
+    case MachO::LC_SEGMENT_64:
+      Segname = StringRef(MLC.segment_command_64_data.segname,
+                          strnlen(MLC.segment_command_64_data.segname,
+                                  sizeof(MLC.segment_command_64_data.segname)));
+      break;
+    default:
+      continue;
+    }
+
+    if (Segname == "__LINKEDIT") {
+      // We update the __LINKEDIT segment later (in layoutTail).
+      assert(LC.Sections.empty() && "__LINKEDIT segment has sections");
+      LinkEditLoadCommand = &MLC;
+      continue;
+    }
+
+    // Update file offsets and sizes of sections.
     uint64_t VMSize = 0;
     uint64_t FileOffsetInSegment = 0;
     for (auto &Sec : LC.Sections) {
@@ -474,7 +597,6 @@ Error MachOWriter::layout() {
     }
 
     // TODO: Handle the __PAGEZERO segment.
-    auto &MLC = LC.MachOLoadCommand;
     switch (MLC.load_command_data.cmd) {
     case MachO::LC_SEGMENT:
       MLC.segment_command_data.cmdsize =
@@ -499,7 +621,10 @@ Error MachOWriter::layout() {
     Offset += FileOffsetInSegment;
   }
 
-  // Lay out relocations.
+  return Offset;
+}
+
+uint64_t MachOWriter::layoutRelocations(uint64_t Offset) {
   for (auto &LC : O.LoadCommands)
     for (auto &Sec : LC.Sections) {
       Sec.RelOff = Sec.Relocations.empty() ? 0 : Offset;
@@ -507,8 +632,55 @@ Error MachOWriter::layout() {
       Offset += sizeof(MachO::any_relocation_info) * Sec.NReloc;
     }
 
-  // Lay out tail stuff.
-  auto NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
+  return Offset;
+}
+
+Error MachOWriter::layoutTail(uint64_t Offset) {
+  // The order of LINKEDIT elements is as follows:
+  // rebase info, binding info, weak binding info, lazy binding info, export
+  // trie, data-in-code, symbol table, indirect symbol table, symbol table
+  // strings.
+  uint64_t NListSize = Is64Bit ? sizeof(MachO::nlist_64) : sizeof(MachO::nlist);
+  uint64_t StartOfLinkEdit = Offset;
+  uint64_t StartOfRebaseInfo = StartOfLinkEdit;
+  uint64_t StartOfBindingInfo = StartOfRebaseInfo + O.Rebases.Opcodes.size();
+  uint64_t StartOfWeakBindingInfo = StartOfBindingInfo + O.Binds.Opcodes.size();
+  uint64_t StartOfLazyBindingInfo =
+      StartOfWeakBindingInfo + O.WeakBinds.Opcodes.size();
+  uint64_t StartOfExportTrie =
+      StartOfLazyBindingInfo + O.LazyBinds.Opcodes.size();
+  uint64_t StartOfFunctionStarts = StartOfExportTrie + O.Exports.Trie.size();
+  uint64_t StartOfDataInCode =
+      StartOfFunctionStarts + O.FunctionStarts.Data.size();
+  uint64_t StartOfSymbols = StartOfDataInCode + O.DataInCode.Data.size();
+  uint64_t StartOfIndirectSymbols =
+      StartOfSymbols + NListSize * O.SymTable.NameList.size();
+  uint64_t StartOfSymbolStrings =
+      StartOfIndirectSymbols +
+      sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+  uint64_t LinkEditSize =
+      (StartOfSymbolStrings + strTableSize()) - StartOfLinkEdit;
+
+  // Now we have determined the layout of the contents of the __LINKEDIT
+  // segment. Update its load command.
+  if (LinkEditLoadCommand) {
+    MachO::macho_load_command *MLC = LinkEditLoadCommand;
+    switch (LinkEditLoadCommand->load_command_data.cmd) {
+    case MachO::LC_SEGMENT:
+      MLC->segment_command_data.cmdsize = sizeof(MachO::segment_command);
+      MLC->segment_command_data.fileoff = StartOfLinkEdit;
+      MLC->segment_command_data.vmsize = alignTo(LinkEditSize, PageSize);
+      MLC->segment_command_data.filesize = LinkEditSize;
+      break;
+    case MachO::LC_SEGMENT_64:
+      MLC->segment_command_64_data.cmdsize = sizeof(MachO::segment_command_64);
+      MLC->segment_command_64_data.fileoff = StartOfLinkEdit;
+      MLC->segment_command_64_data.vmsize = alignTo(LinkEditSize, PageSize);
+      MLC->segment_command_64_data.filesize = LinkEditSize;
+      break;
+    }
+  }
+
   for (auto &LC : O.LoadCommands) {
     auto &MLC = LC.MachOLoadCommand;
     auto cmd = MLC.load_command_data.cmd;
@@ -530,13 +702,44 @@ Error MachOWriter::layout() {
         return createStringError(llvm::errc::not_supported,
                                  "shared library is not yet supported");
 
-      if (MLC.dysymtab_command_data.nindirectsyms != 0)
-        return createStringError(llvm::errc::not_supported,
-                                 "indirect symbol table is not yet supported");
+      if (!O.IndirectSymTable.Symbols.empty()) {
+        MLC.dysymtab_command_data.indirectsymoff = StartOfIndirectSymbols;
+        MLC.dysymtab_command_data.nindirectsyms =
+            O.IndirectSymTable.Symbols.size();
+      }
 
       updateDySymTab(MLC);
       break;
     }
+    case MachO::LC_DATA_IN_CODE:
+      MLC.linkedit_data_command_data.dataoff = StartOfDataInCode;
+      MLC.linkedit_data_command_data.datasize = O.DataInCode.Data.size();
+      break;
+    case MachO::LC_FUNCTION_STARTS:
+      MLC.linkedit_data_command_data.dataoff = StartOfFunctionStarts;
+      MLC.linkedit_data_command_data.datasize = O.FunctionStarts.Data.size();
+      break;
+    case MachO::LC_DYLD_INFO:
+    case MachO::LC_DYLD_INFO_ONLY:
+      MLC.dyld_info_command_data.rebase_off =
+          O.Rebases.Opcodes.empty() ? 0 : StartOfRebaseInfo;
+      MLC.dyld_info_command_data.rebase_size = O.Rebases.Opcodes.size();
+      MLC.dyld_info_command_data.bind_off =
+          O.Binds.Opcodes.empty() ? 0 : StartOfBindingInfo;
+      MLC.dyld_info_command_data.bind_size = O.Binds.Opcodes.size();
+      MLC.dyld_info_command_data.weak_bind_off =
+          O.WeakBinds.Opcodes.empty() ? 0 : StartOfWeakBindingInfo;
+      MLC.dyld_info_command_data.weak_bind_size = O.WeakBinds.Opcodes.size();
+      MLC.dyld_info_command_data.lazy_bind_off =
+          O.LazyBinds.Opcodes.empty() ? 0 : StartOfLazyBindingInfo;
+      MLC.dyld_info_command_data.lazy_bind_size = O.LazyBinds.Opcodes.size();
+      MLC.dyld_info_command_data.export_off =
+          O.Exports.Trie.empty() ? 0 : StartOfExportTrie;
+      MLC.dyld_info_command_data.export_size = O.Exports.Trie.size();
+      break;
+    case MachO::LC_LOAD_DYLINKER:
+    case MachO::LC_MAIN:
+    case MachO::LC_RPATH:
     case MachO::LC_SEGMENT:
     case MachO::LC_SEGMENT_64:
     case MachO::LC_VERSION_MIN_MACOSX:
@@ -563,8 +766,17 @@ void MachOWriter::constructStringTable() {
   StrTableBuilder.finalize();
 }
 
+// Recomputes and updates offset and size fields in load commands and sections
+// since they could be modified.
+Error MachOWriter::layout() {
+  uint64_t Offset = layoutSegments();
+  Offset = layoutRelocations(Offset);
+  return layoutTail(Offset);
+}
+
 Error MachOWriter::finalize() {
-  updateSizeOfCmds();
+  O.Header.NCmds = O.LoadCommands.size();
+  O.Header.SizeOfCmds = computeSizeOfCmds();
   constructStringTable();
 
   if (auto E = layout())

@@ -474,7 +474,7 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
                            .Case("binary", FileFormat::Binary)
                            .Case("ihex", FileFormat::IHex)
                            .Default(FileFormat::Unspecified);
-  if (InputFormat == "binary") {
+  if (Config.InputFormat == FileFormat::Binary) {
     auto BinaryArch = InputArgs.getLastArgValue(OBJCOPY_binary_architecture);
     if (BinaryArch.empty())
       return createStringError(

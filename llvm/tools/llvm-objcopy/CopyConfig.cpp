@@ -314,9 +314,10 @@ static const StringMap<MachineInfo> TargetMap{
     // SPARC
     {"elf32-sparc", {ELF::EM_SPARC, false, false}},
     {"elf32-sparcel", {ELF::EM_SPARC, false, true}},
-  };
+};
 
-static Expected<TargetInfo> getOutputTargetInfoByTargetName(StringRef TargetName) {
+static Expected<TargetInfo>
+getOutputTargetInfoByTargetName(StringRef TargetName) {
   StringRef OriginalTargetName = TargetName;
   bool IsFreeBSD = TargetName.consume_back("-freebsd");
   auto Iter = TargetMap.find(TargetName);
@@ -467,11 +468,12 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
     OutputFormat = InputArgs.getLastArgValue(OBJCOPY_output_target);
   }
 
-  // FIXME: Here we ignores the target explicitly specified by -I option (e.g. -Ielf32-x86-64).
+  // FIXME: Here we ignores the target explicitly specified by -I option (e.g.
+  // -Ielf32-x86-64).
   Config.InputFormat = StringSwitch<FileFormat>(InputFormat)
-                         .Case("binary", FileFormat::Binary)
-                         .Case("ihex", FileFormat::IHex)
-                         .Default(FileFormat::Unspecified);
+                           .Case("binary", FileFormat::Binary)
+                           .Case("ihex", FileFormat::IHex)
+                           .Default(FileFormat::Unspecified);
   if (InputFormat == "binary") {
     auto BinaryArch = InputArgs.getLastArgValue(OBJCOPY_binary_architecture);
     if (BinaryArch.empty())
@@ -485,9 +487,9 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
   }
 
   Config.OutputFormat = StringSwitch<FileFormat>(OutputFormat)
-                          .Case("binary", FileFormat::Binary)
-                          .Case("ihex", FileFormat::IHex)
-                          .Default(FileFormat::Unspecified);
+                            .Case("binary", FileFormat::Binary)
+                            .Case("ihex", FileFormat::IHex)
+                            .Default(FileFormat::Unspecified);
   if (Config.OutputFormat == FileFormat::Unspecified && !OutputFormat.empty()) {
     Expected<TargetInfo> Target = getOutputTargetInfoByTargetName(OutputFormat);
     if (!Target)

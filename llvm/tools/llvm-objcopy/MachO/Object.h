@@ -110,7 +110,7 @@ struct RelocationInfo {
   SymbolEntry *Symbol;
   // True if Info is a scattered_relocation_info.
   bool Scattered;
-  struct MachO::any_relocation_info Info;
+  MachO::any_relocation_info Info;
 };
 
 /// The location of the rebase info inside the binary is described by

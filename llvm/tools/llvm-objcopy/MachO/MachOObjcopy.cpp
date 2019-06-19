@@ -57,7 +57,7 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  // TODO: Support 16KB pages which employed in iOS arm64 binaries:
+  // TODO: Support 16KB pages which are employed in iOS arm64 binaries:
   //       https://github.com/llvm/llvm-project/commit/1bebb2832ee312d3b0316dacff457a7a29435edb
   const uint64_t PageSize = 4096;
 

@@ -454,8 +454,8 @@ void MachOWriter::writeTail() {
             .MachOLoadCommand.dysymtab_command_data;
 
     if (DySymTabCommand.indirectsymoff)
-      Queue.push_back({DySymTabCommand.indirectsymoff,
-                       &MachOWriter::writeIndirectSymbolTable});
+      Queue.emplace_back(DySymTabCommand.indirectsymoff,
+                       &MachOWriter::writeIndirectSymbolTable);
   }
 
   if (O.DataInCodeCommandIndex) {
@@ -464,8 +464,8 @@ void MachOWriter::writeTail() {
             .MachOLoadCommand.linkedit_data_command_data;
 
     if (LinkEditDataCommand.dataoff)
-      Queue.push_back(
-          {LinkEditDataCommand.dataoff, &MachOWriter::writeDataInCodeData});
+      Queue.emplace_back(
+          LinkEditDataCommand.dataoff, &MachOWriter::writeDataInCodeData);
   }
 
   if (O.FunctionStartsCommandIndex) {
@@ -474,8 +474,8 @@ void MachOWriter::writeTail() {
             .MachOLoadCommand.linkedit_data_command_data;
 
     if (LinkEditDataCommand.dataoff)
-      Queue.push_back(
-          {LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData});
+      Queue.emplace_back(
+          LinkEditDataCommand.dataoff, &MachOWriter::writeFunctionStartsData);
   }
 
   llvm::sort(Queue, [](const WriteOperation &LHS, const WriteOperation &RHS) {

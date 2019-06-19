@@ -121,7 +121,7 @@ void MachOWriter::writeHeader() {
 }
 
 void MachOWriter::updateSymbolIndexes() {
-  auto Index = 0;
+  uint32_t Index = 0;
   for (auto &Symbol : O.SymTable.Symbols) {
     Symbol->Index = Index;
     Index++;
@@ -272,9 +272,9 @@ void MachOWriter::writeStringTable() {
           .MachOLoadCommand.symtab_command_data;
 
   char *SymTable = (char *)B.getBufferStart() + SymTabCommand.symoff;
-  for (auto Iter = O.SymTable.Symbols.begin(); Iter != O.SymTable.Symbols.end();
-       Iter++) {
-    std::unique_ptr<SymbolEntry> &Sym = *Iter;
+  for (auto Iter = O.SymTable.Symbols.begin(), End = O.SymTable.Symbols.end();
+       Iter != End; Iter++) {
+    SymbolEntry *Sym = Iter->get();
     auto Nstrx = O.StrTableBuilder.getOffset(Sym->Name);
 
     if (Is64Bit)
@@ -558,7 +558,7 @@ Error MachOWriter::layout() {
 }
 
 void MachOWriter::constructStringTable() {
-  for (auto &Sym : O.SymTable.Symbols)
+  for (std::unique_ptr<SymbolEntry> &Sym : O.SymTable.Symbols)
     O.StrTableBuilder.add(Sym->Name);
   O.StrTableBuilder.finalize();
 }

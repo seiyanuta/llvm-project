@@ -85,7 +85,7 @@ struct LoadCommand {
 // nlist.
 struct SymbolEntry {
   std::string Name;
-  int Index;
+  uint32_t Index;
   uint8_t n_type;
   uint8_t n_sect;
   uint16_t n_desc;

@@ -1319,6 +1319,33 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
         outs() << CommentStream.str();
         Comments.clear();
 
+        if (Disassembled) {
+          for (unsigned i = 0; i < Inst.getNumOperands(); ++i) {
+            auto Operand = Inst.getOperand(i);
+            if (Operand.isImm()) {
+              int64_t Imm = Operand.getImm();
+              uint64_t Target = SectionAddr + Index + Size + Imm;
+
+              for (const auto &Sec : Obj->sections()) {
+                auto Start = Sec.getAddress();
+                auto End = Start + Sec.getSize();
+                if (Sec.isData() && Start <= Target < End) {
+                  Expected<StringRef> ContentOrError = Sec.getContents();
+                  if (!ContentOrError)
+                    llvm_unreachable("TODO");
+
+                  auto Content = *ContentOrError;
+                  auto Offset = Target - Start;
+                  if (Offset < Content.size()) {
+                    auto Str = Content.substr(Offset);
+                    outs() << "\t# \"" << Str << "\"";
+                  }
+                }
+              }
+            }
+          }
+        }
+
         // Try to resolve the target of a call, tail call, etc. to a specific
         // symbol.
         if (MIA && (MIA->isCall(Inst) || MIA->isUnconditionalBranch(Inst) ||

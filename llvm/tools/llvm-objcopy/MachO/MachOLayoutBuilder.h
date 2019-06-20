@@ -35,6 +35,7 @@ public:
       : O(O), Is64Bit(Is64Bit),
         PageSize(PageSize) {}
 
+  // Recomputes and updates fields in the given object such as file offsets.
   Error layout();
 };
 

@@ -468,7 +468,7 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
     OutputFormat = InputArgs.getLastArgValue(OBJCOPY_output_target);
   }
 
-  // FIXME:  Currently, We ignore the target for non-binary/ihex formats
+  // FIXME:  Currently, we ignore the target for non-binary/ihex formats
   // explicitly specified by -I option (e.g. -Ielf32-x86-64) and guess the
   // format by llvm::object::createBinary regardless of the option value.
   Config.InputFormat = StringSwitch<FileFormat>(InputFormat)

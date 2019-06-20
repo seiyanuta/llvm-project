@@ -777,7 +777,7 @@ Error MachOWriter::layout() {
 
 Error MachOWriter::finalize() {
   constructStringTable();
-  MachOLayoutBuilder LayoutBuilder(O, Is64Bit, IsLittleEndian, PageSize);
+  MachOLayoutBuilder LayoutBuilder(O, Is64Bit, PageSize);
   return LayoutBuilder.layout();
 }
 

@@ -1338,10 +1338,21 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                   auto Offset = Target - Start;
                   if (Offset < Content.size()) {
                     const char *Str = Content.data() + Offset;
-                    size_t N = strnlen(Str, Content.size());
-                    if (N == Content.size())
+                    size_t N = 0;
+                    size_t MaxLen = 32;
+                    while (N < Content.size() && N < MaxLen && isPrint(Str[N]))
+                      N++;
+
+                    if (N == 0 || N == Content.size())
                       break; // non zero-terminated string
-                    outs() << "\t# \"" << Str << "\"";
+
+                    auto ShortenedStr = StringRef(Str, N);
+                    outs() << "\t# \"";
+                    outs().write_escaped(ShortenedStr);
+                    if (N == MaxLen)
+                      outs() << "...";
+                    outs() << "\"";
+
                   }
                 }
               }

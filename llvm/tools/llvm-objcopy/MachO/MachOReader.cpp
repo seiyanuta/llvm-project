@@ -255,7 +255,7 @@ void MachOReader::readFunctionStartsData(Object &O) const {
 
 void MachOReader::readIndirectSymbolTable(Object &O) const {
   MachO::dysymtab_command DySymTab = MachOObj.getDysymtabLoadCommand();
-  for (uint32_t i = 0; i < DySymTab.nindirectsyms; i++)
+  for (uint32_t i = 0; i < DySymTab.nindirectsyms; ++i)
     O.IndirectSymTable.Symbols.push_back(
         MachOObj.getIndirectSymbolTableEntry(DySymTab, i));
 }

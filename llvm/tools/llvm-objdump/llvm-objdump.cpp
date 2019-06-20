@@ -1337,7 +1337,10 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                   auto Content = *ContentOrError;
                   auto Offset = Target - Start;
                   if (Offset < Content.size()) {
-                    auto Str = Content.substr(Offset);
+                    const char *Str = Content.data() + Offset;
+                    size_t N = strnlen(Str, Content.size());
+                    if (N == Content.size())
+                      break; // non zero-terminated string
                     outs() << "\t# \"" << Str << "\"";
                   }
                 }

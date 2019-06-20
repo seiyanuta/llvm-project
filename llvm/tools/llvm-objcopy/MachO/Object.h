@@ -97,7 +97,7 @@ struct SymbolEntry {
 struct SymbolTable {
   std::vector<std::unique_ptr<SymbolEntry>> Symbols;
 
-  SymbolEntry *getSymbolByIndex(uint32_t Index);
+  const SymbolEntry *getSymbolByIndex(uint32_t Index) const;
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB
@@ -107,7 +107,7 @@ struct StringTable {
 };
 
 struct RelocationInfo {
-  SymbolEntry *Symbol;
+  const SymbolEntry *Symbol;
   // True if Info is a scattered_relocation_info.
   bool Scattered;
   MachO::any_relocation_info Info;

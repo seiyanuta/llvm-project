@@ -170,7 +170,7 @@ SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
   assert(nlist.n_strx < StrTable.size() &&
          "n_strx exceeds the size of the string table");
   SymbolEntry SE;
-  SE.Name = StringRef(&StrTable.data()[nlist.n_strx]).str();
+  SE.Name = StringRef(StrTable.data() + nlist.n_strx).str();
   SE.n_type = nlist.n_type;
   SE.n_sect = nlist.n_sect;
   SE.n_desc = nlist.n_desc;
@@ -183,10 +183,10 @@ void MachOReader::readSymbolTable(Object &O) const {
   for (auto Symbol : MachOObj.symbols()) {
     SymbolEntry SE =
         (MachOObj.is64Bit()
-             ? constructSymbolEntry<MachO::nlist_64>(
+             ? constructSymbolEntry(
                    StrTable,
                    MachOObj.getSymbol64TableEntry(Symbol.getRawDataRefImpl()))
-             : constructSymbolEntry<MachO::nlist>(
+             : constructSymbolEntry(
                    StrTable,
                    MachOObj.getSymbolTableEntry(Symbol.getRawDataRefImpl())));
 

@@ -5,9 +5,9 @@ namespace llvm {
 namespace objcopy {
 namespace macho {
 
-SymbolEntry *SymbolTable::getSymbolByIndex(uint32_t Index) {
+const SymbolEntry *SymbolTable::getSymbolByIndex(uint32_t Index) const {
   assert(Index < Symbols.size() && "invalid symbol index");
-  return const_cast<SymbolEntry *>(Symbols[Index].get());
+  return Symbols[Index].get();
 }
 
 } // end namespace macho

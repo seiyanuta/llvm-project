@@ -23,6 +23,7 @@ class MachOWriter {
   bool Is64Bit;
   bool IsLittleEndian;
   Buffer &B;
+  StringTableBuilder StrTableBuilder{StringTableBuilder::MachO};
 
   size_t headerSize() const;
   size_t loadCommandsSize() const;

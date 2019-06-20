@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MachOWriter.h"
+#include "MachOLayoutBuilder.h"
 #include "Object.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/BinaryFormat/MachO.h"
@@ -775,14 +776,9 @@ Error MachOWriter::layout() {
 }
 
 Error MachOWriter::finalize() {
-  O.Header.NCmds = O.LoadCommands.size();
-  O.Header.SizeOfCmds = computeSizeOfCmds();
   constructStringTable();
-
-  if (auto E = layout())
-    return E;
-
-  return Error::success();
+  MachOLayoutBuilder LayoutBuilder(O, Is64Bit, IsLittleEndian, PageSize);
+  return LayoutBuilder.layout();
 }
 
 Error MachOWriter::write() {

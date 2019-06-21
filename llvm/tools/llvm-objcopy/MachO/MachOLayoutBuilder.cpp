@@ -91,7 +91,8 @@ void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
 // Recomputes and updates offset and size fields in load commands and sections
 // since they could be modified.
 uint64_t MachOLayoutBuilder::layoutSegments() {
-  auto HeaderSize = Is64Bit ? sizeof(MachO::mach_header_64) : sizeof(MachO::mach_header);
+  auto HeaderSize =
+      Is64Bit ? sizeof(MachO::mach_header_64) : sizeof(MachO::mach_header);
   auto Offset = HeaderSize + O.Header.SizeOfCmds;
 
   // Lay out sections.

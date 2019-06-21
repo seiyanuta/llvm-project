@@ -35,15 +35,12 @@ class MachOLayoutBuilder {
 
 public:
   MachOLayoutBuilder(Object &O, bool Is64Bit, uint64_t PageSize)
-      : O(O), Is64Bit(Is64Bit),
-        PageSize(PageSize) {}
+      : O(O), Is64Bit(Is64Bit), PageSize(PageSize) {}
 
   // Recomputes and updates fields in the given object such as file offsets.
   Error layout();
 
-  StringTableBuilder& getStringTableBuilder() {
-    return StrTableBuilder;
-  }
+  StringTableBuilder &getStringTableBuilder() { return StrTableBuilder; }
 };
 
 } // end namespace macho

@@ -239,7 +239,7 @@ void MachOReader::readDataInCodeData(Object &O) const {
           .MachOLoadCommand.linkedit_data_command_data;
 
   O.DataInCode.Data = arrayRefFromStringRef(
-    MachOObj.getData().substr(LDC.dataoff, LDC.datasize));
+      MachOObj.getData().substr(LDC.dataoff, LDC.datasize));
 }
 
 void MachOReader::readFunctionStartsData(Object &O) const {
@@ -250,7 +250,7 @@ void MachOReader::readFunctionStartsData(Object &O) const {
           .MachOLoadCommand.linkedit_data_command_data;
 
   O.FunctionStarts.Data = arrayRefFromStringRef(
-    MachOObj.getData().substr(LDC.dataoff, LDC.datasize));
+      MachOObj.getData().substr(LDC.dataoff, LDC.datasize));
 }
 
 void MachOReader::readIndirectSymbolTable(Object &O) const {

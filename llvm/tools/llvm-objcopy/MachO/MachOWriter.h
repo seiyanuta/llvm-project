@@ -7,8 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "../Buffer.h"
-#include "MachOObjcopy.h"
 #include "MachOLayoutBuilder.h"
+#include "MachOObjcopy.h"
 #include "Object.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Object/MachO.h"

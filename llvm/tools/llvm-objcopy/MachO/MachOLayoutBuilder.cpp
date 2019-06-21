@@ -14,15 +14,58 @@ namespace llvm {
 namespace objcopy {
 namespace macho {
 
+uint32_t MachOLayoutBuilder::computeSizeOfCmds() const {
+  uint32_t Size = 0;
+  for (const auto &LC : O.LoadCommands) {
+    auto &MLC = LC.MachOLoadCommand;
+    auto cmd = MLC.load_command_data.cmd;
+    switch (cmd) {
+    case MachO::LC_SEGMENT:
+      Size += sizeof(MachO::segment_command) +
+              sizeof(MachO::section) * LC.Sections.size();
+      continue;
+    case MachO::LC_SEGMENT_64:
+      Size += sizeof(MachO::segment_command_64) +
+              sizeof(MachO::section_64) * LC.Sections.size();
+      continue;
+    }
+
+    switch (cmd) {
+#define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
+  case MachO::LCName:                                                          \
+    Size += sizeof(MachO::LCStruct) + LC.Payload.size();                       \
+    break;
+#include "llvm/BinaryFormat/MachO.def"
+#undef HANDLE_LOAD_COMMAND
+    }
+  }
+
+  return Size;
+}
+
+void MachOLayoutBuilder::constructStringTable() {
+  for (std::unique_ptr<SymbolEntry> &Sym : O.SymTable.Symbols)
+    StrTableBuilder.add(Sym->Name);
+  StrTableBuilder.finalize();
+}
+
+void MachOLayoutBuilder::updateSymbolIndexes() {
+  uint32_t Index = 0;
+  for (auto &Symbol : O.SymTable.Symbols) {
+    Symbol->Index = Index;
+    Index++;
+  }
+}
+
 // Updates the index and the number of local/external/undefined symbols. Here we
 // assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
 // are already sorted by the those types.
 void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
   uint32_t NumLocalSymbols = 0;
-  auto Iter = O.SymTable.NameList.begin();
-  auto End = O.SymTable.NameList.end();
+  auto Iter = O.SymTable.Symbols.begin();
+  auto End = O.SymTable.Symbols.end();
   for (; Iter != End; Iter++) {
-    if (Iter->n_type & (MachO::N_EXT | MachO::N_PEXT))
+    if ((*Iter)->n_type & (MachO::N_EXT | MachO::N_PEXT))
       break;
 
     NumLocalSymbols++;
@@ -30,7 +73,7 @@ void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
 
   uint32_t NumExtDefSymbols = 0;
   for (; Iter != End; Iter++) {
-    if ((Iter->n_type & MachO::N_TYPE) == MachO::N_UNDF)
+    if (((*Iter)->n_type & MachO::N_TYPE) == MachO::N_UNDF)
       break;
 
     NumExtDefSymbols++;
@@ -42,7 +85,7 @@ void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
   MLC.dysymtab_command_data.nextdefsym = NumExtDefSymbols;
   MLC.dysymtab_command_data.iundefsym = NumLocalSymbols + NumExtDefSymbols;
   MLC.dysymtab_command_data.nundefsym =
-      O.SymTable.NameList.size() - (NumLocalSymbols + NumExtDefSymbols);
+      O.SymTable.Symbols.size() - (NumLocalSymbols + NumExtDefSymbols);
 }
 
 // Recomputes and updates offset and size fields in load commands and sections
@@ -132,16 +175,6 @@ uint64_t MachOLayoutBuilder::layoutRelocations(uint64_t Offset) {
   return Offset;
 }
 
-// FIXME: remove this
-size_t MachOLayoutBuilder::strTableSize() const {
-  size_t S = 0;
-  for (const auto &Str : O.StrTable.Strings)
-    S += Str.size();
-  S += (O.StrTable.Strings.empty() ? 0 : O.StrTable.Strings.size() - 1);
-  return S;
-}
-
-
 Error MachOLayoutBuilder::layoutTail(uint64_t Offset) {
   // The order of LINKEDIT elements is as follows:
   // rebase info, binding info, weak binding info, lazy binding info, export
@@ -161,12 +194,12 @@ Error MachOLayoutBuilder::layoutTail(uint64_t Offset) {
       StartOfFunctionStarts + O.FunctionStarts.Data.size();
   uint64_t StartOfSymbols = StartOfDataInCode + O.DataInCode.Data.size();
   uint64_t StartOfIndirectSymbols =
-      StartOfSymbols + NListSize * O.SymTable.NameList.size();
+      StartOfSymbols + NListSize * O.SymTable.Symbols.size();
   uint64_t StartOfSymbolStrings =
       StartOfIndirectSymbols +
       sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
   uint64_t LinkEditSize =
-      (StartOfSymbolStrings + strTableSize()) - StartOfLinkEdit;
+      (StartOfSymbolStrings + StrTableBuilder.getSize()) - StartOfLinkEdit;
 
   // Now we have determined the layout of the contents of the __LINKEDIT
   // segment. Update its load command.
@@ -194,9 +227,9 @@ Error MachOLayoutBuilder::layoutTail(uint64_t Offset) {
     switch (cmd) {
     case MachO::LC_SYMTAB:
       MLC.symtab_command_data.symoff = StartOfSymbols;
-      MLC.symtab_command_data.nsyms = O.SymTable.NameList.size();
+      MLC.symtab_command_data.nsyms = O.SymTable.Symbols.size();
       MLC.symtab_command_data.stroff = StartOfSymbolStrings;
-      MLC.symtab_command_data.strsize = strTableSize();
+      MLC.symtab_command_data.strsize = StrTableBuilder.getSize();
       break;
     case MachO::LC_DYSYMTAB: {
       if (MLC.dysymtab_command_data.ntoc != 0 ||
@@ -265,40 +298,11 @@ Error MachOLayoutBuilder::layoutTail(uint64_t Offset) {
   return Error::success();
 }
 
-uint32_t MachOLayoutBuilder::computeSizeOfCmds() {
-  uint32_t Size = 0;
-  for (const auto &LC : O.LoadCommands) {
-    auto &MLC = LC.MachOLoadCommand;
-    auto cmd = MLC.load_command_data.cmd;
-    switch (cmd) {
-    case MachO::LC_SEGMENT:
-      Size += sizeof(MachO::segment_command) +
-              sizeof(MachO::section) * LC.Sections.size();
-      continue;
-    case MachO::LC_SEGMENT_64:
-      Size += sizeof(MachO::segment_command_64) +
-              sizeof(MachO::section_64) * LC.Sections.size();
-      continue;
-    }
-
-    switch (cmd) {
-#define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
-  case MachO::LCName:                                                          \
-    Size += sizeof(MachO::LCStruct) + LC.Payload.size();                       \
-    break;
-#include "llvm/BinaryFormat/MachO.def"
-#undef HANDLE_LOAD_COMMAND
-    }
-  }
-
-  return Size;
-}
-
-// Recomputes and updates offset and size fields in load commands and sections
-// since they could be modified.
 Error MachOLayoutBuilder::layout() {
   O.Header.NCmds = O.LoadCommands.size();
   O.Header.SizeOfCmds = computeSizeOfCmds();
+  constructStringTable();
+  updateSymbolIndexes();
   uint64_t Offset = layoutSegments();
   Offset = layoutRelocations(Offset);
   return layoutTail(Offset);

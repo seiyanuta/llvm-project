@@ -8,6 +8,7 @@
 
 #include "../Buffer.h"
 #include "MachOObjcopy.h"
+#include "MachOLayoutBuilder.h"
 #include "Object.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Object/MachO.h"
@@ -24,24 +25,12 @@ class MachOWriter {
   bool IsLittleEndian;
   uint64_t PageSize;
   Buffer &B;
-  StringTableBuilder StrTableBuilder{StringTableBuilder::MachO};
-  // Points to the __LINKEDIT segment if it exists.
-  MachO::macho_load_command *LinkEditLoadCommand = nullptr;
+  MachOLayoutBuilder LayoutBuilder;
 
   size_t headerSize() const;
   size_t loadCommandsSize() const;
   size_t symTableSize() const;
   size_t strTableSize() const;
-
-  void updateDySymTab(MachO::macho_load_command &MLC);
-  void updateSizeOfCmds();
-  void updateSymbolIndexes();
-  void constructStringTable();
-  uint32_t computeSizeOfCmds();
-  uint64_t layoutSegments();
-  uint64_t layoutRelocations(uint64_t Offset);
-  Error layoutTail(uint64_t Offset);
-  Error layout();
 
   void writeHeader();
   void writeLoadCommands();
@@ -64,7 +53,7 @@ public:
   MachOWriter(Object &O, bool Is64Bit, bool IsLittleEndian, uint64_t PageSize,
               Buffer &B)
       : O(O), Is64Bit(Is64Bit), IsLittleEndian(IsLittleEndian),
-        PageSize(PageSize), B(B) {}
+        PageSize(PageSize), B(B), LayoutBuilder(O, Is64Bit, PageSize) {}
 
   size_t totalSize() const;
   Error finalize();

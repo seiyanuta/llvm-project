@@ -46,8 +46,9 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
       Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
-      Config.StripUnneeded || Config.DiscardMode != DiscardType::None ||
-      !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
+      Config.StripAllGNU || Config.StripUnneeded ||
+      Config.DiscardMode != DiscardType::None || !Config.SymbolsToAdd.empty() ||
+      Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");
   }

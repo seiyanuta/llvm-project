@@ -19,6 +19,17 @@ namespace macho {
 
 using namespace object;
 
+static void removeSymbols(const CopyConfig &Config, Object &Obj) {
+  auto RemovePred = [Config](const std::unique_ptr<SymbolEntry> &N) {
+    if (Config.StripAll)
+      return true;
+
+    return false;
+  };
+
+  Obj.SymTable.removeSymbols(RemovePred);
+}
+
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
@@ -41,6 +52,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
                              "option not supported by llvm-objcopy for MachO");
   }
 
+  removeSymbols(Config, Obj);
   return Error::success();
 }
 

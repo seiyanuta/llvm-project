@@ -98,6 +98,8 @@ struct SymbolTable {
   std::vector<std::unique_ptr<SymbolEntry>> Symbols;
 
   const SymbolEntry *getSymbolByIndex(uint32_t Index) const;
+  void removeSymbols(
+      function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove);
 };
 
 /// The location of the string table inside the binary is described by LC_SYMTAB

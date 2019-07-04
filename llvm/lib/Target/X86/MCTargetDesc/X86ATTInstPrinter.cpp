@@ -38,8 +38,17 @@ void X86ATTInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
   OS << markup("<reg:") << '%' << getRegisterName(RegNo) << markup(">");
 }
 
+// Since printRegName is a const method, we need this non-const version to
+// update MarkupState and MarkupSpans.
+void X86ATTInstPrinter::printMarkedUpRegName(raw_ostream &OS, unsigned RegNo) {
+  OS << startMarkup(MarkupType::Reg) << '%' << getRegisterName(RegNo)
+     << endMarkup();
+}
+
 void X86ATTInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
                                   StringRef Annot, const MCSubtargetInfo &STI) {
+  resetMarkup(OS);
+
   // If verbose assembly is enabled, we can print some informative comments.
   if (CommentStream)
     HasCustomInstComment = EmitAnyX86InstComments(MI, *CommentStream, MII);
@@ -353,11 +362,11 @@ void X86ATTInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
                                      raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
   if (Op.isReg()) {
-    printRegName(O, Op.getReg());
+    printMarkedUpRegName(O, Op.getReg());
   } else if (Op.isImm()) {
     // Print immediates as signed values.
     int64_t Imm = Op.getImm();
-    O << markup("<imm:") << '$' << formatImm(Imm) << markup(">");
+    O << startMarkup(MarkupType::Imm) << '$' << formatImm(Imm) << endMarkup();
 
     // TODO: This should be in a helper function in the base class, so it can
     // be used by other printers.
@@ -376,9 +385,9 @@ void X86ATTInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
     }
   } else {
     assert(Op.isExpr() && "unknown operand kind in printOperand");
-    O << markup("<imm:") << '$';
+    O << startMarkup(MarkupType::Imm) << '$';
     Op.getExpr()->print(O, &MAI);
-    O << markup(">");
+    O << endMarkup();
   }
 }
 
@@ -388,7 +397,7 @@ void X86ATTInstPrinter::printMemReference(const MCInst *MI, unsigned Op,
   const MCOperand &IndexReg = MI->getOperand(Op + X86::AddrIndexReg);
   const MCOperand &DispSpec = MI->getOperand(Op + X86::AddrDisp);
 
-  O << markup("<mem:");
+  O << startMarkup(MarkupType::Mem);
 
   // If this has a segment register, print it.
   printOptionalSegReg(MI, Op + X86::AddrSegmentReg, O);
@@ -412,19 +421,20 @@ void X86ATTInstPrinter::printMemReference(const MCInst *MI, unsigned Op,
       printOperand(MI, Op + X86::AddrIndexReg, O);
       unsigned ScaleVal = MI->getOperand(Op + X86::AddrScaleAmt).getImm();
       if (ScaleVal != 1) {
-        O << ',' << markup("<imm:") << ScaleVal // never printed in hex.
-          << markup(">");
+        O << ',' << startMarkup(MarkupType::Imm)
+          << ScaleVal // never printed in hex.
+          << endMarkup();
       }
     }
     O << ')';
   }
 
-  O << markup(">");
+  O << endMarkup();
 }
 
 void X86ATTInstPrinter::printSrcIdx(const MCInst *MI, unsigned Op,
                                     raw_ostream &O) {
-  O << markup("<mem:");
+  O << startMarkup(MarkupType::Mem);
 
   // If this has a segment register, print it.
   printOptionalSegReg(MI, Op + 1, O);
@@ -433,25 +443,25 @@ void X86ATTInstPrinter::printSrcIdx(const MCInst *MI, unsigned Op,
   printOperand(MI, Op, O);
   O << ")";
 
-  O << markup(">");
+  O << endMarkup();
 }
 
 void X86ATTInstPrinter::printDstIdx(const MCInst *MI, unsigned Op,
                                     raw_ostream &O) {
-  O << markup("<mem:");
+  O << startMarkup(MarkupType::Mem);
 
   O << "%es:(";
   printOperand(MI, Op, O);
   O << ")";
 
-  O << markup(">");
+  O << endMarkup();
 }
 
 void X86ATTInstPrinter::printMemOffset(const MCInst *MI, unsigned Op,
                                        raw_ostream &O) {
   const MCOperand &DispSpec = MI->getOperand(Op);
 
-  O << markup("<mem:");
+  O << startMarkup(MarkupType::Mem);
 
   // If this has a segment register, print it.
   printOptionalSegReg(MI, Op + 1, O);
@@ -463,7 +473,7 @@ void X86ATTInstPrinter::printMemOffset(const MCInst *MI, unsigned Op,
     DispSpec.getExpr()->print(O, &MAI);
   }
 
-  O << markup(">");
+  O << endMarkup();
 }
 
 void X86ATTInstPrinter::printU8Imm(const MCInst *MI, unsigned Op,
@@ -471,8 +481,8 @@ void X86ATTInstPrinter::printU8Imm(const MCInst *MI, unsigned Op,
   if (MI->getOperand(Op).isExpr())
     return printOperand(MI, Op, O);
 
-  O << markup("<imm:") << '$' << formatImm(MI->getOperand(Op).getImm() & 0xff)
-    << markup(">");
+  O << startMarkup(MarkupType::Imm) << '$'
+    << formatImm(MI->getOperand(Op).getImm() & 0xff) << endMarkup();
 }
 
 void X86ATTInstPrinter::printSTiRegOperand(const MCInst *MI, unsigned OpNo,
@@ -481,7 +491,7 @@ void X86ATTInstPrinter::printSTiRegOperand(const MCInst *MI, unsigned OpNo,
   unsigned Reg = Op.getReg();
   // Override the default printing to print st(0) instead st.
   if (Reg == X86::ST0)
-    OS << markup("<reg:") << "%st(0)" << markup(">");
+    OS << startMarkup(MarkupType::Reg) << "%st(0)" << endMarkup();
   else
-    printRegName(OS, Reg);
+    printMarkedUpRegName(OS, Reg);
 }

@@ -117,6 +117,8 @@ public:
 
 private:
   bool HasCustomInstComment;
+
+  void printMarkedUpRegName(raw_ostream &OS, unsigned RegNo);
 };
 
 } // end namespace llvm

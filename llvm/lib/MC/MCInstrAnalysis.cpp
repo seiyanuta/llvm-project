@@ -30,7 +30,7 @@ bool MCInstrAnalysis::evaluateBranch(const MCInst &Inst, uint64_t Addr,
     return false;
 
   int64_t Imm = Inst.getOperand(0).getImm();
-  Target = Addr + Size + Imm;
+  Target = Addr+Size+Imm;
   return true;
 }
 

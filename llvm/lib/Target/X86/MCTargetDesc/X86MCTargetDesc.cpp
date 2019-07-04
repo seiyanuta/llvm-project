@@ -400,7 +400,8 @@ public:
                  uint64_t GotSectionVA,
                  const Triple &TargetTriple) const override;
   bool evaluateMemoryOperandAddress(const MCInst &Inst, uint64_t Addr,
-                                                 uint64_t Size, uint64_t &Target) const override;
+                                    uint64_t Size,
+                                    uint64_t &Target) const override;
 };
 
 #define GET_STIPREDICATE_DEFS_FOR_MC_ANALYSIS
@@ -513,11 +514,13 @@ std::vector<std::pair<uint64_t, uint64_t>> X86MCInstrAnalysis::findPltEntries(
       return findX86_64PltEntries(PltSectionVA, PltContents);
     default:
       return {};
-  }
+    }
 }
 
-bool X86MCInstrAnalysis::evaluateMemoryOperandAddress(const MCInst &Inst, uint64_t Addr,
-                                            uint64_t Size, uint64_t &Target) const {
+bool X86MCInstrAnalysis::evaluateMemoryOperandAddress(const MCInst &Inst,
+                                                      uint64_t Addr,
+                                                      uint64_t Size,
+                                                      uint64_t &Target) const {
   MCInstrDesc Opcode = Info->get(Inst.getOpcode());
   int MemOpStart = X86II::getMemoryOperandNo(Opcode.TSFlags);
   if (MemOpStart == -1)

@@ -332,6 +332,10 @@ static cl::opt<bool>
          cl::cat(ObjdumpCat));
 static cl::alias WideShort("w", cl::Grouping, cl::aliasopt(Wide));
 
+static cl::opt<bool> Highlight("highlight",
+                              cl::desc("Enable syntax highlighting"),
+                              cl::cat(ObjdumpCat));
+
 static cl::extrahelp
     HelpResponse("\nPass @FILE as argument to read options from FILE.\n");
 
@@ -1051,6 +1055,58 @@ static void dumpELFData(uint64_t SectionAddr, uint64_t Index, uint64_t End,
   }
 }
 
+static void printMarkedUpInst(StringRef Text) {
+  // outs() << "\x1b[32m'" << Text << "'\x1b[0m";
+  if (!Highlight) {
+    outs() << Text;
+    return;
+  }
+
+  // Parse rich disassembly output (see https://llvm.org/docs/MarkedUpDisassembly.html).
+  size_t Pos = 0;
+  while (Pos < Text.size()) {
+    size_t OpenBracket, Colon;
+    if ((OpenBracket = Text.find('<', Pos)) == StringRef::npos)
+      break;
+    if ((Colon = Text.find(':', OpenBracket)) == StringRef::npos)
+      break;
+
+    size_t NestedLevel = 1;
+    size_t CloseBracket = Colon + 1;
+    while (CloseBracket < Text.size())  {
+      if (Text[CloseBracket] == '<')
+        NestedLevel++;
+      if (Text[CloseBracket] == '>') {
+        NestedLevel--;
+        if (NestedLevel == 0)
+          break;
+      }
+
+      CloseBracket++;
+    }
+
+    if (CloseBracket == Text.size())
+      break;
+
+    StringRef TagName = Text.substr(OpenBracket + 1, Colon - OpenBracket - 1);
+    StringRef AnnotatedText = Text.substr(Colon + 1, CloseBracket - Colon - 1);
+
+    outs() << Text.substr(Pos, OpenBracket - Pos);
+
+    if (TagName == "reg")
+      outs() << "\x1B[1;31m";
+    if (TagName == "mem")
+      outs() << "\x1B[4;32m";
+
+    printMarkedUpInst(AnnotatedText);
+    outs() << "\x1B[0m";
+    
+    Pos = CloseBracket + 1;
+  }
+
+  outs() << Text.substr(Pos);
+}
+
 static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                               MCContext &Ctx, MCDisassembler *PrimaryDisAsm,
                               MCDisassembler *SecondaryDisAsm,
@@ -1357,10 +1413,13 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
         if (Size == 0)
           Size = 1;
 
+        std::string InstText;
+        raw_string_ostream InstTextStream(InstText);
         PIP.printInst(
             *IP, Disassembled ? &Inst : nullptr, Bytes.slice(Index, Size),
-            {SectionAddr + Index + VMAAdjustment, Section.getIndex()}, outs(),
+            {SectionAddr + Index + VMAAdjustment, Section.getIndex()}, InstTextStream,
             "", *STI, &SP, &Rels);
+        printMarkedUpInst(StringRef(InstTextStream.str()));
         outs() << CommentStream.str();
         Comments.clear();
 
@@ -1528,6 +1587,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     report_error(Obj->getFileName(),
                  "no instruction printer for target " + TripleName);
   IP->setPrintImmHex(PrintImmHex);
+  IP->setUseMarkup(Highlight);
 
   PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
   SourcePrinter SP(Obj, TheTarget->getName());

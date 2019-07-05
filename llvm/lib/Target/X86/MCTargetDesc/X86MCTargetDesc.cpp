@@ -399,9 +399,9 @@ public:
   findPltEntries(uint64_t PltSectionVA, ArrayRef<uint8_t> PltContents,
                  uint64_t GotSectionVA,
                  const Triple &TargetTriple) const override;
-  bool evaluateMemoryOperandAddress(const MCInst &Inst, uint64_t Addr,
-                                    uint64_t Size,
-                                    uint64_t &Target) const override;
+  Optional<uint64_t> evaluateMemoryOperandAddress(const MCInst &Inst,
+                                                  uint64_t Addr,
+                                                  uint64_t Size) const override;
 };
 
 #define GET_STIPREDICATE_DEFS_FOR_MC_ANALYSIS
@@ -517,14 +517,12 @@ std::vector<std::pair<uint64_t, uint64_t>> X86MCInstrAnalysis::findPltEntries(
     }
 }
 
-bool X86MCInstrAnalysis::evaluateMemoryOperandAddress(const MCInst &Inst,
-                                                      uint64_t Addr,
-                                                      uint64_t Size,
-                                                      uint64_t &Target) const {
+Optional<uint64_t> X86MCInstrAnalysis::evaluateMemoryOperandAddress(
+    const MCInst &Inst, uint64_t Addr, uint64_t Size) const {
   MCInstrDesc Opcode = Info->get(Inst.getOpcode());
   int MemOpStart = X86II::getMemoryOperandNo(Opcode.TSFlags);
   if (MemOpStart == -1)
-    return false;
+    return None;
   MemOpStart += X86II::getOperandBias(Opcode);
 
   const MCOperand &BaseReg = Inst.getOperand(MemOpStart + X86::AddrBaseReg);
@@ -532,15 +530,13 @@ bool X86MCInstrAnalysis::evaluateMemoryOperandAddress(const MCInst &Inst,
   const MCOperand &ScaleAmt = Inst.getOperand(MemOpStart + X86::AddrScaleAmt);
   const MCOperand &Disp = Inst.getOperand(MemOpStart + X86::AddrDisp);
   if (IndexReg.getReg() != 0 || ScaleAmt.getImm() != 1 || !Disp.isImm())
-    return false;
+    return None;
 
-  // RIP-relative addressing
-  if (BaseReg.getReg() == X86::RIP) {
-    Target = Addr + Size + Disp.getImm();
-    return true;
-  }
+  // RIP-relative addressing.
+  if (BaseReg.getReg() == X86::RIP)
+    return Addr + Size + Disp.getImm();
 
-  return false;
+  return None;
 }
 
 } // end of namespace X86_MC

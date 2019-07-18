@@ -51,32 +51,39 @@ void MachOLayoutBuilder::constructStringTable() {
 
 void MachOLayoutBuilder::updateSymbolIndexes() {
   uint32_t Index = 0;
-  for (auto &Symbol : O.SymTable.Symbols) {
-    Symbol->Index = Index;
-    Index++;
-  }
+  for (auto &Symbol : O.SymTable.Symbols)
+    Symbol->Index = Index++;
 }
 
 // Updates the index and the number of local/external/undefined symbols. Here we
 // assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
 // are already sorted by the those types.
 void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
+  assert(MLC.load_command_data.cmd == MachO::LC_DYSYMTAB);
+  assert(std::is_sorted(O.SymTable.Symbols.begin(), O.SymTable.Symbols.end(),
+                        [](const std::unique_ptr<SymbolEntry> &A, const std::unique_ptr<SymbolEntry> &B) {
+                          // The order of types is: local < external < undefined.
+                          errs() << A->Name << "<>" << B->Name << ": " << "f=" << ((A->isLocalSymbol() && !B->isLocalSymbol()) ? "y" : "n") << ", s=" <<  ((A->isExternalSymbol() && B->isUndefinedSymbol()) ? "y" : "n") << "\n";
+                          return false;
+                          return (A->isLocalSymbol() && !B->isLocalSymbol()) ||  (A->isExternalSymbol() && B->isUndefinedSymbol());
+                        }));
+
   uint32_t NumLocalSymbols = 0;
   auto Iter = O.SymTable.Symbols.begin();
   auto End = O.SymTable.Symbols.end();
-  for (; Iter != End; Iter++) {
-    if ((*Iter)->n_type & (MachO::N_EXT | MachO::N_PEXT))
+  for (; Iter != End; ++Iter) {
+    if ((*Iter)->isExternalSymbol())
       break;
 
-    NumLocalSymbols++;
+    ++NumLocalSymbols;
   }
 
   uint32_t NumExtDefSymbols = 0;
-  for (; Iter != End; Iter++) {
-    if (((*Iter)->n_type & MachO::N_TYPE) == MachO::N_UNDF)
+  for (; Iter != End; ++Iter) {
+    if ((*Iter)->isUndefinedSymbol())
       break;
 
-    NumExtDefSymbols++;
+    ++NumExtDefSymbols;
   }
 
   MLC.dysymtab_command_data.ilocalsym = 0;

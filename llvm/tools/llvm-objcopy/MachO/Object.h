@@ -90,6 +90,18 @@ struct SymbolEntry {
   uint8_t n_sect;
   uint16_t n_desc;
   uint64_t n_value;
+
+  bool isExternalSymbol() const {
+    return n_type & ((MachO::N_EXT | MachO::N_PEXT));
+  }
+
+  bool isLocalSymbol() const {
+    return !isExternalSymbol();
+  }
+
+  bool isUndefinedSymbol() const {
+    return (n_type & MachO::N_TYPE) == MachO::N_UNDF;
+  }
 };
 
 /// The location of the symbol table inside the binary is described by LC_SYMTAB

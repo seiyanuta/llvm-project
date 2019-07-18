@@ -473,9 +473,7 @@ void MachOWriter::writeTail() {
     (this->*WriteOp.second)();
 }
 
-Error MachOWriter::finalize() {
-  return LayoutBuilder.layout();
-}
+Error MachOWriter::finalize() { return LayoutBuilder.layout(); }
 
 Error MachOWriter::write() {
   if (Error E = B.allocate(totalSize()))

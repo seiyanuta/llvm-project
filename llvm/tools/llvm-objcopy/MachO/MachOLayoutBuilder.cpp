@@ -55,18 +55,19 @@ void MachOLayoutBuilder::updateSymbolIndexes() {
     Symbol->Index = Index++;
 }
 
-// Updates the index and the number of local/external/undefined symbols. Here we
-// assume that MLC is a LC_DYSYMTAB and the nlist entries in the symbol table
-// are already sorted by the those types.
+// Updates the index and the number of local/external/undefined symbols.
 void MachOLayoutBuilder::updateDySymTab(MachO::macho_load_command &MLC) {
   assert(MLC.load_command_data.cmd == MachO::LC_DYSYMTAB);
+  // Make sure that nlist entries in the symbol table are sorted by the those
+  // types. The order is: local < defined external < undefined external.
   assert(std::is_sorted(O.SymTable.Symbols.begin(), O.SymTable.Symbols.end(),
-                        [](const std::unique_ptr<SymbolEntry> &A, const std::unique_ptr<SymbolEntry> &B) {
-                          // The order of types is: local < external < undefined.
-                          errs() << A->Name << "<>" << B->Name << ": " << "f=" << ((A->isLocalSymbol() && !B->isLocalSymbol()) ? "y" : "n") << ", s=" <<  ((A->isExternalSymbol() && B->isUndefinedSymbol()) ? "y" : "n") << "\n";
-                          return false;
-                          return (A->isLocalSymbol() && !B->isLocalSymbol()) ||  (A->isExternalSymbol() && B->isUndefinedSymbol());
-                        }));
+                        [](const std::unique_ptr<SymbolEntry> &A,
+                           const std::unique_ptr<SymbolEntry> &B) {
+                          return (A->isLocalSymbol() && !B->isLocalSymbol()) ||
+                                 (!A->isUndefinedSymbol() &&
+                                  B->isUndefinedSymbol());
+                        }) &&
+         "Symbols are not sorted by their types.");
 
   uint32_t NumLocalSymbols = 0;
   auto Iter = O.SymTable.Symbols.begin();

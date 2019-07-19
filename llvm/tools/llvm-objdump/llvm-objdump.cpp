@@ -1224,6 +1224,9 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
     SmallString<40> Comments;
     raw_svector_ostream CommentStream(Comments);
 
+    SmallString<128> InstString;
+    raw_svector_ostream InstStringStream(InstString);
+
     ArrayRef<uint8_t> Bytes = arrayRefFromStringRef(
         unwrapOrError(Section.getContents(), Obj->getFileName()));
 
@@ -1383,9 +1386,10 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
 
         PIP.printInst(
             *IP, Disassembled ? &Inst : nullptr, Bytes.slice(Index, Size),
-            {SectionAddr + Index + VMAAdjustment, Section.getIndex()}, outs(),
-            "", *STI, &SP, &Rels);
-        outs() << CommentStream.str();
+            {SectionAddr + Index + VMAAdjustment, Section.getIndex()},
+            InstStringStream, "", *STI, &SP, &Rels);
+        outs() << InstStringStream.str() << CommentStream.str();
+        InstString.clear();
         Comments.clear();
 
         // Try to resolve the target of a call, tail call, etc. to a specific

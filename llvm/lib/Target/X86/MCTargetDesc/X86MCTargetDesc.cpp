@@ -525,11 +525,13 @@ Optional<uint64_t> X86MCInstrAnalysis::evaluateMemoryOperandAddress(
     return None;
   MemOpStart += X86II::getOperandBias(Opcode);
 
+  const MCOperand &SegReg = Inst.getOperand(MemOpStart + X86::AddrSegmentReg);
   const MCOperand &BaseReg = Inst.getOperand(MemOpStart + X86::AddrBaseReg);
   const MCOperand &IndexReg = Inst.getOperand(MemOpStart + X86::AddrIndexReg);
   const MCOperand &ScaleAmt = Inst.getOperand(MemOpStart + X86::AddrScaleAmt);
   const MCOperand &Disp = Inst.getOperand(MemOpStart + X86::AddrDisp);
-  if (IndexReg.getReg() != 0 || ScaleAmt.getImm() != 1 || !Disp.isImm())
+  if (SegReg != 0 || IndexReg.getReg() != 0 || ScaleAmt.getImm() != 1 ||
+      !Disp.isImm())
     return None;
 
   // RIP-relative addressing.

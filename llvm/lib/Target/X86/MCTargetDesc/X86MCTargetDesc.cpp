@@ -530,7 +530,7 @@ Optional<uint64_t> X86MCInstrAnalysis::evaluateMemoryOperandAddress(
   const MCOperand &IndexReg = Inst.getOperand(MemOpStart + X86::AddrIndexReg);
   const MCOperand &ScaleAmt = Inst.getOperand(MemOpStart + X86::AddrScaleAmt);
   const MCOperand &Disp = Inst.getOperand(MemOpStart + X86::AddrDisp);
-  if (SegReg != 0 || IndexReg.getReg() != 0 || ScaleAmt.getImm() != 1 ||
+  if (SegReg.getReg() != 0 || IndexReg.getReg() != 0 || ScaleAmt.getImm() != 1 ||
       !Disp.isImm())
     return None;
 

@@ -1444,6 +1444,30 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
             }
           }
         }
+
+        if (Disassembled) {
+          Optional<uint64_t> Target = MIA->evaluateMemoryOperandAddress(Inst, SectionAddr + Index, Size);
+          if (Target) {
+            for (const auto &SymSec : AllSymbols) {
+              auto TargetSym = llvm::partition_point(SymSec.second, [=](const std::tuple<uint64_t, StringRef, uint8_t> &T) {
+                return std::get<0>(T) < *Target;
+              });
+              if (TargetSym == SymSec.second.end())
+                continue;
+
+              uint64_t SymAddr = std::get<0>(*TargetSym);
+              StringRef SymName = std::get<1>(*TargetSym);
+              if (Target != SymAddr)
+                continue;
+
+              outs() << "        # "
+                     << format(Is64Bits ? "%016" PRIx64 " " : "%08" PRIx64 " ", SymAddr)
+                     << " <"  << SymName << ">";
+              break;
+            }
+          }
+        }
+
         outs() << "\n";
 
         // Hexagon does this in pretty printer

@@ -345,6 +345,34 @@ static StringRef ToolName;
 
 typedef std::vector<std::tuple<uint64_t, StringRef, uint8_t>> SectionSymbolsTy;
 
+enum class ObjdumpHighlightColor {
+  Immediate,
+  Register,
+  SymbolName,
+  // Reset colors.
+  Reset,
+};
+
+// TODO: Make this configurable (just like $LS_COLORS).
+std::map<ObjdumpHighlightColor, std::pair<raw_ostream::Colors, bool>> HighlightColors = {
+  // Default colors: Color, { raw_ostream::Colors, Bold }
+  { ObjdumpHighlightColor::Immediate, { raw_ostream::RED, false }},
+  { ObjdumpHighlightColor::Register, { raw_ostream::BLUE, false }},
+  { ObjdumpHighlightColor::SymbolName, { raw_ostream::YELLOW, true }},
+};
+
+static void applyHighlighting(ObjdumpHighlightColor Color) {
+  if (Color == ObjdumpHighlightColor::Reset) {
+    outs().resetColor();
+    return;
+  }
+
+  if (HighlightColors.count(Color)) {
+    std::pair<raw_ostream::Colors, bool> Pair = HighlightColors[Color];
+    outs().changeColor(Pair.first, Pair.second);
+  }
+}
+
 static bool shouldKeep(object::SectionRef S) {
   if (FilterSections.empty())
     return true;
@@ -1099,21 +1127,22 @@ static void printMarkupSpans(StringRef Text,
     outs() << BeforeText;
 
     if (Span.InnerSpans->empty()) {
-      switch (Span.Type)  {
-      case MarkupType::Reg:
-        outs().changeColor(raw_ostream::BLUE);
-        break;
+      ObjdumpHighlightColor Color = ObjdumpHighlightColor::Reset;
+      switch (Span.Type) {
       case MarkupType::Imm:
-        outs().changeColor(raw_ostream::RED);
+        Color = ObjdumpHighlightColor::Immediate;
+        break;
+      case MarkupType::Reg:
+        Color = ObjdumpHighlightColor::Register;
         break;
       default:
-        // Do nothing.
         break;
       }
 
       StringRef InnerText = Text.substr(Span.InnerPos, Span.InnerLength);
+      applyHighlighting(Color);
       outs() << InnerText;
-      outs().resetColor();
+      applyHighlighting(ObjdumpHighlightColor::Reset);
     } else {
       NextPos = Span.InnerPos;
       printMarkupSpans(Text, *Span.InnerSpans, NextPos);
@@ -1516,7 +1545,7 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
               uint64_t TargetAddress = std::get<0>(*TargetSym);
               StringRef TargetName = std::get<1>(*TargetSym);
               if (Highlight)
-                outs().changeColor(raw_ostream::YELLOW, true);
+                applyHighlighting(ObjdumpHighlightColor::SymbolName);
 
               outs() << " <" << TargetName;
               uint64_t Disp = Target - TargetAddress;
@@ -1525,7 +1554,7 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
               outs() << '>';
 
               if (Highlight)
-                outs().resetColor();
+                applyHighlighting(ObjdumpHighlightColor::Reset);
             }
           }
         }

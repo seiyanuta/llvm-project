@@ -1,0 +1,9 @@
+# RUN: llvm-objdump -d --highlight %p/Inputs/highlight.elf-x86_64 | FileCheck %s
+# REQUIRES: x86-registered-target
+
+# Make sure it highlights symbol names.
+# CHECK: {{614: .* callq   -31.\[0;1;33m <foo>.\[0m}}
+
+# Make sure it highlights registers and immediate values.
+# CHECK: {{619: .* movl    2099701\(.\[0;34m%rip.\[0m\), .\[0;34m%eax.\[0m}}
+# CHECK: {{61f: .* addl    .\[0;31m\$123.\[0m, .\[0;34m%eax.\[0m}}

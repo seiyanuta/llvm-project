@@ -117,3 +117,66 @@ format_object<uint64_t> MCInstPrinter::formatHex(uint64_t Value) const {
   }
   llvm_unreachable("unsupported print style");
 }
+
+MarkupStart MCInstPrinter::startMarkup(MarkupType Type) const {
+  return MarkupStart(getUseMarkup(), MarkupSpans, Type);
+}
+
+MarkupEnd MCInstPrinter::endMarkup() const {
+  return MarkupEnd(getUseMarkup(), MarkupSpans);
+}
+
+WithMarkup MCInstPrinter::withMarkup(raw_ostream &OS, MarkupType Type) const {
+  return WithMarkup(OS, getUseMarkup(), MarkupSpans, Type);
+}
+
+raw_ostream &llvm::operator<<(raw_ostream &OS, const MarkupStart &M) {
+  if (M.Enabled) {
+    StringRef TypeStr;
+    switch (M.Type) {
+    case MarkupType::Imm:
+      TypeStr = "imm";
+      break;
+    case MarkupType::Reg:
+      TypeStr = "reg";
+      break;
+    case MarkupType::Mem:
+      TypeStr = "mem";
+      break;
+    }
+
+    size_t Length = 2 + TypeStr.size();
+    if (!M.Spans.empty()) {
+      // Length and InnerLength will be set later.
+      M.Spans.top()->emplace_back(M.Type, OS.tell(), 0, OS.tell() + Length, 0);
+      M.Spans.push(&M.Spans.top()->back().InnerSpans);
+    }
+    OS << "<" << TypeStr << ":";
+  }
+
+  return OS;
+}
+
+raw_ostream &llvm::operator<<(raw_ostream &OS, const MarkupEnd &M) {
+  if (M.Enabled) {
+    if (!M.Spans.empty()) {
+      assert(M.Spans.size() > 1 && "Missing the corresponding markupStart().");
+      M.Spans.pop();
+      MarkupSpan &Span = M.Spans.top()->back();
+      Span.Length = OS.tell() - Span.Pos + 1;
+      Span.InnerLength = OS.tell() - Span.InnerPos;
+    }
+    OS << ">";
+  }
+
+  return OS;
+}
+
+WithMarkup::WithMarkup(raw_ostream &OS, bool Enabled,
+                       std::stack<std::vector<MarkupSpan> *> &Spans,
+                       MarkupType Type)
+    : OS(OS), Enabled(Enabled), Spans(Spans) {
+  OS << MarkupStart(Enabled, Spans, Type);
+}
+
+WithMarkup::~WithMarkup() { OS << MarkupEnd(Enabled, Spans); }

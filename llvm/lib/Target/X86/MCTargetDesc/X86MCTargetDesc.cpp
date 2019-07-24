@@ -519,11 +519,11 @@ std::vector<std::pair<uint64_t, uint64_t>> X86MCInstrAnalysis::findPltEntries(
 
 Optional<uint64_t> X86MCInstrAnalysis::evaluateMemoryOperandAddress(
     const MCInst &Inst, uint64_t Addr, uint64_t Size) const {
-  MCInstrDesc Opcode = Info->get(Inst.getOpcode());
-  int MemOpStart = X86II::getMemoryOperandNo(Opcode.TSFlags);
+  const MCInstrDesc &MCID = Info->get(Inst.getOpcode());
+  int MemOpStart = X86II::getMemoryOperandNo(MCID.TSFlags);
   if (MemOpStart == -1)
     return None;
-  MemOpStart += X86II::getOperandBias(Opcode);
+  MemOpStart += X86II::getOperandBias(MCID);
 
   const MCOperand &SegReg = Inst.getOperand(MemOpStart + X86::AddrSegmentReg);
   const MCOperand &BaseReg = Inst.getOperand(MemOpStart + X86::AddrBaseReg);

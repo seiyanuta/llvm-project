@@ -96,6 +96,8 @@ public:
 
   /// Determine whether colors are displayed.
   bool colorsEnabled();
+  /// Determine whether colors are displayed for the given stream.
+  static bool colorsEnabled(raw_ostream &OS);
 
   /// Change the color of text that will be output from this point forward.
   /// @param Color ANSI color to use, the special SAVEDCOLOR can be used to

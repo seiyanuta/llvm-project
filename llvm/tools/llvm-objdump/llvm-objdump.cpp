@@ -342,6 +342,35 @@ static StringRef ToolName;
 
 typedef std::vector<std::tuple<uint64_t, StringRef, uint8_t>> SectionSymbolsTy;
 
+static bool ColorsEnabled;
+
+// Token types in the disassembly. When adding a new element, don't forget to
+// also update HighlightColors.
+enum class ObjdumpColor {
+  Default,
+  Immediate,
+  Register,
+  SymbolName,
+};
+
+// TODO: Make this configurable (just like $LS_COLORS).
+static const std::map<ObjdumpColor, std::pair<raw_ostream::Colors, bool>>
+    HighlightColors = {
+        // {ObjdumpColor, { raw_ostream::Colors, Bold }}
+        {ObjdumpColor::Default, {raw_ostream::SAVEDCOLOR, false}},
+        {ObjdumpColor::Immediate, {raw_ostream::RED, false}},
+        {ObjdumpColor::Register, {raw_ostream::CYAN, false}},
+        {ObjdumpColor::SymbolName, {raw_ostream::YELLOW, true}},
+};
+
+static WithColor withHighlightColor(ObjdumpColor Color) {
+  auto Pair = HighlightColors.find(Color);
+  assert(Pair != HighlightColors.end() &&
+         "All token types must be defined in HighlightColors.");
+  return WithColor(outs(), Pair->second.first, Pair->second.second, false,
+                   !ColorsEnabled);
+}
+
 static bool shouldKeep(object::SectionRef S) {
   if (FilterSections.empty())
     return true;
@@ -680,7 +709,8 @@ static void printRelocation(const RelocationRef &Rel, uint64_t Address,
   SmallString<32> Val;
   Rel.getTypeName(Name);
   error(getRelocationValueString(Rel, Val));
-  outs() << format(Fmt.data(), Address) << Name << "\t" << Val << "\n";
+  withHighlightColor(ObjdumpColor::Relocation)
+      << format(Fmt.data(), Address) << Name << "\t" << Val << "\n";
 }
 
 class PrettyPrinter {
@@ -691,7 +721,9 @@ public:
                          object::SectionedAddress Address, raw_ostream &OS,
                          StringRef Annot, MCSubtargetInfo const &STI,
                          SourcePrinter *SP, StringRef ObjectFilename,
+                         size_t &InstructionCol,
                          std::vector<RelocationRef> *Rels = nullptr) {
+    uint64_t BeforeOffset = OS.tell();
     if (SP && (PrintSource || PrintLines))
       SP->printSourceLine(OS, Address, ObjectFilename);
 
@@ -709,6 +741,7 @@ public:
     unsigned Column = OS.tell() - Start;
     OS.indent(Column < TabStop - 1 ? TabStop - 1 - Column : 7 - Column % 8);
 
+    InstructionCol = OS.tell() - BeforeOffset;
     if (MI)
       IP.printInst(MI, OS, "", STI);
     else
@@ -734,8 +767,9 @@ public:
   void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
                  object::SectionedAddress Address, raw_ostream &OS,
                  StringRef Annot, MCSubtargetInfo const &STI, SourcePrinter *SP,
-                 StringRef ObjectFilename,
+                 StringRef ObjectFilename, size_t &InstructionCol,
                  std::vector<RelocationRef> *Rels) override {
+    size_t StartOffset = OS.tell();
     if (SP && (PrintSource || PrintLines))
       SP->printSourceLine(OS, Address, ObjectFilename, "");
     if (!MI) {
@@ -743,6 +777,8 @@ public:
       OS << " <unknown>";
       return;
     }
+
+    InstructionCol = OS.tell() - StartOffset;
     std::string Buffer;
     {
       raw_string_ostream TempStream(Buffer);
@@ -804,8 +840,9 @@ public:
   void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
                  object::SectionedAddress Address, raw_ostream &OS,
                  StringRef Annot, MCSubtargetInfo const &STI, SourcePrinter *SP,
-                 StringRef ObjectFilename,
+                 StringRef ObjectFilename, size_t &InstructionCol,
                  std::vector<RelocationRef> *Rels) override {
+    size_t StartOffset = OS.tell();
     if (SP && (PrintSource || PrintLines))
       SP->printSourceLine(OS, Address, ObjectFilename);
 
@@ -813,6 +850,7 @@ public:
       SmallString<40> InstStr;
       raw_svector_ostream IS(InstStr);
 
+      InstructionCol = OS.tell() - StartOffset;
       IP.printInst(MI, IS, "", STI);
 
       OS << left_justify(IS.str(), 60);
@@ -856,8 +894,9 @@ public:
   void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
                  object::SectionedAddress Address, raw_ostream &OS,
                  StringRef Annot, MCSubtargetInfo const &STI, SourcePrinter *SP,
-                 StringRef ObjectFilename,
+                 StringRef ObjectFilename, size_t &InstructionCol,
                  std::vector<RelocationRef> *Rels) override {
+    size_t StartOffset = OS.tell();
     if (SP && (PrintSource || PrintLines))
       SP->printSourceLine(OS, Address, ObjectFilename);
     if (!NoLeadingAddr)
@@ -866,6 +905,7 @@ public:
       OS << "\t";
       dumpBytes(Bytes, OS);
     }
+    InstructionCol = OS.tell() - StartOffset;
     if (MI)
       IP.printInst(MI, OS, "", STI);
     else
@@ -1103,14 +1143,62 @@ static void dumpELFData(uint64_t SectionAddr, uint64_t Index, uint64_t End,
   }
 }
 
+static void printMarkupSpans(StringRef Text, ArrayRef<MarkupSpan> Spans,
+                             size_t &NextPos, size_t InstOffset) {
+  for (const MarkupSpan &Span : Spans) {
+    size_t Pos = Span.Pos - InstOffset;
+    size_t InnerPos = Span.InnerPos - InstOffset;
+    outs() << Text.substr(NextPos, Pos - NextPos);
+
+    if (Span.InnerSpans.empty()) {
+      ObjdumpColor Color;
+      if (Span.Type == MarkupType::Imm)
+        Color = ObjdumpColor::Immediate;
+      else if (Span.Type == MarkupType::Reg)
+        Color = ObjdumpColor::Register;
+      else
+        Color = ObjdumpColor::Default;
+
+      withHighlightColor(Color) << Text.substr(InnerPos, Span.InnerLength);
+    } else {
+      NextPos = InnerPos;
+      printMarkupSpans(Text, Span.InnerSpans, NextPos, InstOffset);
+      StringRef AfterText =
+          Text.substr(NextPos, Span.InnerLength - (NextPos - InnerPos));
+      outs() << AfterText;
+    }
+
+    NextPos = Pos + Span.Length;
+  }
+}
+
+static void printMarkedUpInst(StringRef Text,
+                              const std::vector<MarkupSpan> &Spans,
+                              size_t InstructionCol, size_t InstOffset) {
+  if (!ColorsEnabled) {
+    outs() << Text;
+    return;
+  }
+
+  // Print hexdump, etc.
+  outs() << Text.slice(0, InstructionCol);
+
+  StringRef Disasm = Text.slice(InstructionCol, Text.size());
+  size_t NextPos = 0;
+  printMarkupSpans(Disasm, Spans, NextPos, InstOffset);
+
+  // Print the remaining part.
+  outs() << Disasm.substr(NextPos);
+}
+
 static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                               MCContext &Ctx, MCDisassembler *PrimaryDisAsm,
                               MCDisassembler *SecondaryDisAsm,
                               const MCInstrAnalysis *MIA, MCInstPrinter *IP,
                               const MCSubtargetInfo *PrimarySTI,
                               const MCSubtargetInfo *SecondarySTI,
-                              PrettyPrinter &PIP,
-                              SourcePrinter &SP, bool InlineRelocs) {
+                              PrettyPrinter &PIP, SourcePrinter &SP,
+                              bool InlineRelocs) {
   const MCSubtargetInfo *STI = PrimarySTI;
   MCDisassembler *DisAsm = PrimaryDisAsm;
   bool PrimaryIsThumb = false;
@@ -1250,6 +1338,9 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
 
     SmallString<40> Comments;
     raw_svector_ostream CommentStream(Comments);
+
+    std::vector<MarkupSpan> MarkupSpans;
+    IP->setMarkupSpans(MarkupSpans);
 
     ArrayRef<uint8_t> Bytes = arrayRefFromStringRef(
         unwrapOrError(Section.getContents(), Obj->getFileName()));
@@ -1408,12 +1499,19 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
         if (Size == 0)
           Size = 1;
 
+        std::string InstText;
+        raw_string_ostream InstTextStream(InstText);
+        size_t InstructionCol;
+        size_t StartOffset = InstTextStream.tell();
         PIP.printInst(*IP, Disassembled ? &Inst : nullptr,
                       Bytes.slice(Index, Size),
                       {SectionAddr + Index + VMAAdjustment, Section.getIndex()},
-                      outs(), "", *STI, &SP, Obj->getFileName(), &Rels);
+                      InstTextStream, "", *STI, &SP, Obj->getFileName(), InstructionCol, &Rels);
+        printMarkedUpInst(StringRef(InstTextStream.str()), MarkupSpans,
+                          InstructionCol, StartOffset + InstructionCol);
         outs() << CommentStream.str();
         Comments.clear();
+        MarkupSpans.clear();
 
         // Try to resolve the target of a call, tail call, etc. to a specific
         // symbol.
@@ -1463,11 +1561,13 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
               --TargetSym;
               uint64_t TargetAddress = std::get<0>(*TargetSym);
               StringRef TargetName = std::get<1>(*TargetSym);
-              outs() << " <" << TargetName;
+              WithColor Highlight =
+                  withHighlightColor(ObjdumpColor::SymbolName);
+              Highlight << " <" << TargetName;
               uint64_t Disp = Target - TargetAddress;
               if (Disp)
-                outs() << "+0x" << Twine::utohexstr(Disp);
-              outs() << '>';
+                Highlight << "+0x" << Twine::utohexstr(Disp);
+              Highlight << '>';
             }
           }
         }
@@ -1579,6 +1679,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     report_error(Obj->getFileName(),
                  "no instruction printer for target " + TripleName);
   IP->setPrintImmHex(PrintImmHex);
+  IP->setUseMarkup(ColorsEnabled);
 
   PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
   SourcePrinter SP(Obj, TheTarget->getName());
@@ -2207,7 +2308,8 @@ static void dumpInput(StringRef file) {
 int main(int argc, char **argv) {
   using namespace llvm;
   InitLLVM X(argc, argv);
-  const cl::OptionCategory *OptionFilters[] = {&ObjdumpCat, &MachOCat};
+  const cl::OptionCategory *OptionFilters[] = {&ObjdumpCat, &MachOCat,
+                                               &ColorCategory};
   cl::HideUnrelatedOptions(OptionFilters);
 
   // Initialize targets and assembly printers/parsers.
@@ -2222,6 +2324,8 @@ int main(int argc, char **argv) {
 
   if (StartAddress >= StopAddress)
     error("start address should be less than stop address");
+
+  ColorsEnabled = WithColor::colorsEnabled(outs());
 
   ToolName = argv[0];
 

@@ -25,6 +25,10 @@ combined with other commands:
 
   Display the information contained within an archive's headers.
 
+.. option:: --color
+
+  Enable syntax highlighting.
+
 .. option:: -d, --disassemble
 
   Disassemble all text sections found in the input files.

@@ -1,0 +1,49 @@
+## Show that when disassembling, llvm-objdump highlights symbol names,
+## registers, and immediate values if colors are enabled.
+
+## This test expects ANSI escape sequences.
+# UNSUPPORTED: system-windows
+# REQUIRES: shell
+
+# RUN: yaml2obj %s > %t
+# RUN: llvm-objdump -d --no-show-raw-insn --color=false %t | FileCheck %s --check-prefix=DISABLED
+# RUN: llvm-objdump -d --no-show-raw-insn --color %t | tr -d '\033' \
+# RUN:   | FileCheck %s --check-prefix=ENABLED
+
+# DISABLED:      301: movl 249(%rip), %edx
+# ENABLED:       301: movl 249([0;36m%rip[0m)[0m, [0;36m%edx[0m
+# DISABLED-NEXT: 307: callq -12 <foo>
+# ENABLED-NEXT:  307: callq -12[0;1;33m <foo>[0m
+# DISABLED-NEXT: 30c: movl $0, %eax
+# ENABLED-NEXT:  30c: movl [0;31m$0[0m, [0;36m%eax[0m
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+Sections:
+  - Name:    .text
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_ALLOC, SHF_EXECINSTR]
+    Address: 0x300
+    Content: 'c38b15f9000000e8f4ffffffb800000000c3'
+  - Name:    .data
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_WRITE, SHF_ALLOC]
+    Address: 0x400
+    Content: '00000000'
+Symbols:
+  - Name:            foo
+    Type:            STT_FUNC
+    Section:         .text
+    Binding:         STB_GLOBAL
+    Value:           0x0000000000000300
+    Size:            0x0000000000000001
+  - Name:            main
+    Type:            STT_FUNC
+    Section:         .text
+    Binding:         STB_GLOBAL
+    Value:           0x0000000000000301
+    Size:            0x0000000000000011

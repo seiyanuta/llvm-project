@@ -94,6 +94,8 @@ public:
   static raw_ostream &remark(raw_ostream &OS, StringRef Prefix = "",
                              bool DisableColors = false);
 
+  /// Determine whether colors are displayed in the given stream.
+  static bool colorsEnabled(raw_ostream &OS);
   /// Determine whether colors are displayed.
   bool colorsEnabled();
 

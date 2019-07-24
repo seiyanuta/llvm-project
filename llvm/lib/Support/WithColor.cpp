@@ -96,12 +96,16 @@ raw_ostream &WithColor::remark(raw_ostream &OS, StringRef Prefix,
          << "remark: ";
 }
 
-bool WithColor::colorsEnabled() {
-  if (DisableColors)
-    return false;
+bool WithColor::colorsEnabled(raw_ostream &OS) {
   if (UseColor == cl::BOU_UNSET)
     return OS.has_colors();
   return UseColor == cl::BOU_TRUE;
+}
+
+bool WithColor::colorsEnabled() {
+  if (DisableColors)
+    return false;
+  return colorsEnabled(OS);
 }
 
 WithColor &WithColor::changeColor(raw_ostream::Colors Color, bool Bold,

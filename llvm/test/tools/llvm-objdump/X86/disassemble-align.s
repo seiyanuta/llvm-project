@@ -10,9 +10,12 @@
 
 # CHECK:       0: c3                           |retq
 # CHECK-NEXT:  1: 48 8b 05 56 34 12 00         |movq|0x123456(%rip), %rax
-# CHECK-NEXT:  8: 48 b8 54 55 55 55 55 55 55 55|movabsq|$0x5555555555555554, %rax
-# CHECK-NEXT: 12: 8f ea 00 12 4c 02 40 00 00 00 00     |lwpval|$0x0, 0x40(%rdx,%rax), %r15d
-# CHECK-NEXT: 1d: 8f ea 00 12 04 25 f0 1c f0 1c 00 00 00 00    |lwpins|$0x0, 0x1cf01cf0, %r15d
+# CHECK-NEXT:  8: 48 b8 54 55 55 55 55 55      |movabsq|$0x5555555555555554, %rax
+# CHECK-NEXT: 10: 55 55
+# CHECK-NEXT: 12: 8f ea 00 12 4c 02 40 00      |lwpval|$0x0, 0x40(%rdx,%rax), %r15d
+# CHECK-NEXT: 1a: 00 00 00
+# CHECK-NEXT: 1d: 8f ea 00 12 04 25 f0 1c      |lwpins|$0x0, 0x1cf01cf0, %r15d
+# CHECK-NEXT: 25: f0 1c 00 00 00 00
 # CHECK-NEXT: 2b: ff ff                        |<unknown>
 
 # NORAW:       0:      |retq

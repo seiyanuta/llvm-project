@@ -1,8 +1,10 @@
 ## This test shows that llvm-objdump can disassemble a long instruction.
 # RUN: yaml2obj %s -o %t.o
-# RUN: llvm-objdump -d %t.o | FileCheck %s --strict-whitespace
+# Use '|' to show where the tabs line up.
+# RUN: llvm-objdump -d %t.o | tr '\t' '|' | FileCheck %s --strict-whitespace
 
-# CHECK: 0: 66 66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00 	nopw	%cs:(%rax,%rax)
+# CHECK: 0: 66 66 66 66 66 66 2e 0f      |nopw|%cs:(%rax,%rax)
+# CHECK: 8: 1f 84 00 00 00 00 00
 
 --- !ELF
 FileHeader:

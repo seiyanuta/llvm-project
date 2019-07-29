@@ -242,6 +242,11 @@ cl::opt<bool> NoLeadingAddr("no-leading-addr",
                             cl::desc("Print no leading address"),
                             cl::cat(ObjdumpCat));
 
+cl::opt<size_t> InsnWidth("insn-width",
+                          cl::desc("When printing instruction hex dump, "
+                                   "print given bytes per line."),
+                          cl::init(8), cl::cat(ObjdumpCat));
+
 static cl::opt<bool> RawClangAST(
     "raw-clang-ast",
     cl::desc("Dump the raw binary contents of the clang AST section"),
@@ -673,7 +678,7 @@ public:
       OS << format("%8" PRIx64 ":", Address.Address);
     if (!NoShowRawInsn) {
       OS << ' ';
-      dumpBytes(Bytes, OS);
+      dumpBytes(Bytes.slice(0, std::min(Bytes.size(), InsnWidth.getValue())), OS);
     }
 
     // The output of printInst starts with a tab. Print some spaces so that
@@ -686,6 +691,18 @@ public:
       IP.printInst(MI, OS, "", STI);
     else
       OS << "\t<unknown>";
+
+    if (!NoShowRawInsn && Bytes.size() > InsnWidth) {
+      size_t Offset = InsnWidth;
+      while (Offset < Bytes.size()) {
+        OS  << "\n";
+        if (!NoLeadingAddr)
+          OS << format("%8" PRIx64 ":", Address.Address + Offset);
+        OS << ' ';
+        dumpBytes(Bytes.slice(Offset, std::min(Bytes.size() - Offset, InsnWidth.getValue())), OS);
+        Offset += InsnWidth;
+      }
+    }
   }
 };
 PrettyPrinter PrettyPrinterInst;
@@ -2181,6 +2198,9 @@ int main(int argc, char **argv) {
 
   if (StartAddress >= StopAddress)
     error("start address should be less than stop address");
+
+  if (InsnWidth <= 0)
+    error("instruction width must be a positive integer");
 
   ToolName = argv[0];
 

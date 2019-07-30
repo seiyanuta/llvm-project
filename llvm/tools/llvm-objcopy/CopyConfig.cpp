@@ -374,6 +374,10 @@ NameOrRegex::NameOrRegex(StringRef Pattern, bool IsRegex) {
       ("^" + Pattern.ltrim('^').rtrim('$') + "$").toStringRef(Data));
 }
 
+Error NameOrRegex::isMachOCannonicalName() const {
+  return R ? Error::success() : isValidMachOCannonicalName(Name);
+}
+
 static Error addSymbolsToRenameFromFile(StringMap<StringRef> &SymbolsToRename,
                                         BumpPtrAllocator &Alloc,
                                         StringRef Filename) {
@@ -406,6 +410,28 @@ template <class T> static ErrorOr<T> getAsInteger(StringRef Val) {
   if (Val.getAsInteger(0, Result))
     return errc::invalid_argument;
   return Result;
+}
+
+// isValidMachOCannonicalName returns success if Name is a MachO cannonical name
+// ("<segment>,<section>") and lengths of both segment and section names are
+// valid.
+Error isValidMachOCannonicalName(StringRef Name) {
+  if (Name.count(',') != 1)
+    return createStringError(errc::invalid_argument,
+                             "invalid section name '%s' (should be formatted "
+                             "as '<segment name>,<section name>')",
+                             Name.str().c_str());
+
+  std::pair<StringRef, StringRef> Pair = Name.split(',');
+  if (Pair.first.size() > 16)
+    return createStringError(errc::invalid_argument,
+                             "too long segment name: '%s'",
+                             Pair.first.str().c_str());
+  if (Pair.second.size() > 16)
+    return createStringError(errc::invalid_argument,
+                             "too long section name: '%s'",
+                             Pair.second.str().c_str());
+  return Error::success();
 }
 
 // ParseObjcopyOptions returns the config and sets the input arguments. If a

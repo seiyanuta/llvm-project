@@ -96,6 +96,7 @@ public:
   NameOrRegex(StringRef Pattern, bool IsRegex);
   bool operator==(StringRef S) const { return R ? R->match(S) : Name == S; }
   bool operator!=(StringRef S) const { return !operator==(S); }
+  Error isMachOCannonicalName() const;
 };
 
 struct NewSymbolInfo {
@@ -187,6 +188,11 @@ struct DriverConfig {
   SmallVector<CopyConfig, 1> CopyConfigs;
   BumpPtrAllocator Alloc;
 };
+
+// isValidMachOCannonicalName returns success if Name is a MachO cannonical name
+// ("<segment>,<section>") and lengths of both segment and section names are
+// valid.
+Error isValidMachOCannonicalName(StringRef Name);
 
 // ParseObjcopyOptions returns the config and sets the input arguments. If a
 // help flag is set then ParseObjcopyOptions will print the help messege and

@@ -18,6 +18,32 @@ namespace objcopy {
 namespace macho {
 
 using namespace object;
+using SectionPred = std::function<bool(const Section &Sec)>;
+
+static void removeSections(const CopyConfig &Config, Object &Obj) {
+  SectionPred RemovePred = [](const Section &) { return false; };
+
+  if (!Config.OnlySection.empty()) {
+    RemovePred = [&Config, RemovePred](const Section &Sec) {
+      return !is_contained(Config.OnlySection, Sec.CannonicalName);
+    };
+  }
+
+  return Obj.removeSections(RemovePred);
+}
+
+static Error validateOptions(const CopyConfig &Config) {
+  // TODO: Support section renaming in GNU objcopy for compatibility (see
+  // http://lists.llvm.org/pipermail/llvm-dev/2019-May/132570.html).
+
+  if (!Config.OnlySection.empty()) {
+    for (const NameOrRegex &NR : Config.OnlySection)
+      if (Error E = NR.isMachOCannonicalName())
+        return E;
+  }
+
+  return Error::success();
+}
 
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
@@ -25,10 +51,10 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.SplitDWO.empty() || !Config.SymbolsPrefix.empty() ||
       !Config.AllocSectionsPrefix.empty() || !Config.AddSection.empty() ||
       !Config.DumpSection.empty() || !Config.KeepSection.empty() ||
-      !Config.OnlySection.empty() || !Config.SymbolsToGlobalize.empty() ||
-      !Config.SymbolsToKeep.empty() || !Config.SymbolsToLocalize.empty() ||
-      !Config.SymbolsToWeaken.empty() || !Config.SymbolsToKeepGlobal.empty() ||
-      !Config.SectionsToRename.empty() || !Config.SymbolsToRename.empty() ||
+      !Config.SymbolsToGlobalize.empty() || !Config.SymbolsToKeep.empty() ||
+      !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
+      !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
+      !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
       !Config.SetSectionFlags.empty() || !Config.ToRemove.empty() ||
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
@@ -41,6 +67,10 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
                              "option not supported by llvm-objcopy for MachO");
   }
 
+  if (auto E = validateOptions(Config))
+    return E;
+
+  removeSections(Config, Obj);
   return Error::success();
 }
 

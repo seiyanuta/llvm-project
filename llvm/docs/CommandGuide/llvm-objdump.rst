@@ -151,6 +151,10 @@ OPTIONS
 
   When disassembling, do not print the raw bytes of each instruction.
 
+.. option:: --insn-width
+
+  When disassembling, print given bytes per line of each instruction.
+
 .. option:: --print-imm-hex
 
   Use hex format when printing immediate values in disassembly output.

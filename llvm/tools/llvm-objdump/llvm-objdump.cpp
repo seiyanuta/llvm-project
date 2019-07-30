@@ -243,8 +243,8 @@ cl::opt<bool> NoLeadingAddr("no-leading-addr",
                             cl::cat(ObjdumpCat));
 
 cl::opt<size_t> InsnWidth("insn-width",
-                          cl::desc("When printing instruction hex dump, "
-                                   "print given bytes per line."),
+                          cl::desc("When disassembling, print given bytes "
+                                   "per line of each instruction."),
                           cl::init(8), cl::cat(ObjdumpCat));
 
 static cl::opt<bool> RawClangAST(
@@ -651,14 +651,42 @@ static bool hasMappingSymbols(const ObjectFile *Obj) {
   return isArmElf(Obj) || isAArch64Elf(Obj);
 }
 
-static void printRelocation(const RelocationRef &Rel, uint64_t Address,
-                            bool Is64Bits) {
+static void printRelocation(raw_ostream &OS, const RelocationRef &Rel,
+                            uint64_t Address, bool Is64Bits) {
   StringRef Fmt = Is64Bits ? "\t\t%016" PRIx64 ":  " : "\t\t\t%08" PRIx64 ":  ";
   SmallString<16> Name;
   SmallString<32> Val;
   Rel.getTypeName(Name);
   error(getRelocationValueString(Rel, Val));
-  outs() << format(Fmt.data(), Address) << Name << "\t" << Val << "\n";
+  OS << format(Fmt.data(), Address) << Name << "\t" << Val;
+}
+
+static void printFirstInstHexDumpLine(raw_ostream &OS, ArrayRef<uint8_t> Bytes,
+                                      object::SectionedAddress Address) {
+  if (!NoLeadingAddr)
+    OS << format("%8" PRIx64 ":", Address.Address);
+  if (!NoShowRawInsn) {
+    OS << ' ';
+    dumpBytes(Bytes.slice(0, std::min(Bytes.size(), InsnWidth.getValue())), OS);
+  }
+}
+
+static void printRemainingInstHexDumpLines(raw_ostream &OS,
+                                           ArrayRef<uint8_t> Bytes,
+                                           object::SectionedAddress Address) {
+  if (!NoShowRawInsn && Bytes.size() > InsnWidth) {
+    size_t Offset = InsnWidth;
+    while (Offset < Bytes.size()) {
+      OS << "\n";
+      if (!NoLeadingAddr)
+        OS << format("%8" PRIx64 ":", Address.Address + Offset);
+      OS << ' ';
+      dumpBytes(Bytes.slice(Offset, std::min(Bytes.size() - Offset,
+                                             InsnWidth.getValue())),
+                OS);
+      Offset += InsnWidth;
+    }
+  }
 }
 
 class PrettyPrinter {
@@ -674,12 +702,7 @@ public:
       SP->printSourceLine(OS, Address);
 
     size_t Start = OS.tell();
-    if (!NoLeadingAddr)
-      OS << format("%8" PRIx64 ":", Address.Address);
-    if (!NoShowRawInsn) {
-      OS << ' ';
-      dumpBytes(Bytes.slice(0, std::min(Bytes.size(), InsnWidth.getValue())), OS);
-    }
+    printFirstInstHexDumpLine(OS, Bytes, Address);
 
     // The output of printInst starts with a tab. Print some spaces so that
     // the tab has 1 column and advances to the target tab stop.
@@ -692,17 +715,8 @@ public:
     else
       OS << "\t<unknown>";
 
-    if (!NoShowRawInsn && Bytes.size() > InsnWidth) {
-      size_t Offset = InsnWidth;
-      while (Offset < Bytes.size()) {
-        OS  << "\n";
-        if (!NoLeadingAddr)
-          OS << format("%8" PRIx64 ":", Address.Address + Offset);
-        OS << ' ';
-        dumpBytes(Bytes.slice(Offset, std::min(Bytes.size() - Offset, InsnWidth.getValue())), OS);
-        Offset += InsnWidth;
-      }
-    }
+    OS << Annot;
+    printRemainingInstHexDumpLines(OS, Bytes, Address);
   }
 };
 PrettyPrinter PrettyPrinterInst;
@@ -752,7 +766,8 @@ public:
     auto PrintReloc = [&]() -> void {
       while ((RelCur != RelEnd) && (RelCur->getOffset() <= Address.Address)) {
         if (RelCur->getOffset() == Address.Address) {
-          printRelocation(*RelCur, Address.Address, false);
+          printRelocation(OS, *RelCur, Address.Address, false);
+          OS << "\n";
           return;
         }
         ++RelCur;
@@ -784,6 +799,8 @@ public:
       Bytes = Bytes.slice(4);
       Address.Address += 4;
     }
+
+    OS << Annot;
   }
 };
 HexagonPrettyPrinter HexagonPrettyPrinterInst;
@@ -857,6 +874,8 @@ public:
       IP.printInst(MI, OS, "", STI);
     else
       OS << "\t<unknown>";
+
+    OS << Annot;
   }
 };
 BPFPrettyPrinter BPFPrettyPrinterInst;
@@ -1394,13 +1413,6 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
         if (Size == 0)
           Size = 1;
 
-        PIP.printInst(
-            *IP, Disassembled ? &Inst : nullptr, Bytes.slice(Index, Size),
-            {SectionAddr + Index + VMAAdjustment, Section.getIndex()}, outs(),
-            "", *STI, &SP, &Rels);
-        outs() << CommentStream.str();
-        Comments.clear();
-
         // Try to resolve the target of a call, tail call, etc. to a specific
         // symbol.
         if (MIA && (MIA->isCall(Inst) || MIA->isUnconditionalBranch(Inst) ||
@@ -1449,15 +1461,14 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
               --TargetSym;
               uint64_t TargetAddress = std::get<0>(*TargetSym);
               StringRef TargetName = std::get<1>(*TargetSym);
-              outs() << " <" << TargetName;
+              CommentStream << " <" << TargetName;
               uint64_t Disp = Target - TargetAddress;
               if (Disp)
-                outs() << "+0x" << Twine::utohexstr(Disp);
-              outs() << '>';
+                CommentStream << "+0x" << Twine::utohexstr(Disp);
+              CommentStream << '>';
             }
           }
         }
-        outs() << "\n";
 
         // Hexagon does this in pretty printer
         if (Obj->getArch() != Triple::hexagon) {
@@ -1483,10 +1494,19 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                 Offset += AdjustVMA;
             }
 
-            printRelocation(*RelCur, SectionAddr + Offset, Is64Bits);
+            CommentStream << "\n";
+            printRelocation(CommentStream, *RelCur, SectionAddr + Offset,
+                            Is64Bits);
             ++RelCur;
           }
         }
+
+        PIP.printInst(*IP, Disassembled ? &Inst : nullptr,
+                      Bytes.slice(Index, Size),
+                      {SectionAddr + Index + VMAAdjustment, Section.getIndex()},
+                      outs(), Comments, *STI, &SP, &Rels);
+        Comments.clear();
+        outs() << "\n";
 
         Index += Size;
       }

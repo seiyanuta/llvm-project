@@ -23,6 +23,16 @@ using SectionPred = std::function<bool(const Section &Sec)>;
 static void removeSections(const CopyConfig &Config, Object &Obj) {
   SectionPred RemovePred = [](const Section &) { return false; };
 
+  if (Config.StripAll) {
+    // Remove all debug sections.
+    RemovePred = [RemovePred](const Section &Sec) {
+      if (Sec.Segname == "__DWARF")
+        return true;
+
+      return RemovePred(Sec);
+    };
+  }
+
   if (!Config.OnlySection.empty()) {
     RemovePred = [&Config, RemovePred](const Section &Sec) {
       return !is_contained(Config.OnlySection, Sec.CannonicalName);
@@ -30,6 +40,23 @@ static void removeSections(const CopyConfig &Config, Object &Obj) {
   }
 
   return Obj.removeSections(RemovePred);
+}
+
+static void markSymbols(const CopyConfig &Config, Object &Obj) {
+  // Symbols referenced from the indirect symbol table must not be removed.
+  for (IndirectSymbolEntry &ISE : Obj.IndirectSymTable.Symbols)
+    if (ISE.Symbol)
+      (*ISE.Symbol)->Referenced = true;
+}
+
+static void removeSymbols(const CopyConfig &Config, Object &Obj) {
+  auto RemovePred = [Config](const std::unique_ptr<SymbolEntry> &N) {
+    if (N->Referenced)
+      return false;
+    return Config.StripAll;
+  };
+
+  Obj.SymTable.removeSymbols(RemovePred);
 }
 
 static Error validateOptions(const CopyConfig &Config) {
@@ -58,11 +85,12 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.UnneededSymbolsToRemove.empty() ||
       !Config.SetSectionFlags.empty() || !Config.ToRemove.empty() ||
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
-      Config.PreserveDates || Config.StripDWO || Config.StripNonAlloc ||
-      Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
-      Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
-      Config.StripUnneeded || Config.DiscardMode != DiscardType::None ||
-      !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
+      Config.PreserveDates || Config.StripAllGNU || Config.StripDWO ||
+      Config.StripNonAlloc || Config.StripSections || Config.Weaken ||
+      Config.DecompressDebugSections || Config.StripDebug ||
+      Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded ||
+      Config.DiscardMode != DiscardType::None || !Config.SymbolsToAdd.empty() ||
+      Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");
   }
@@ -71,6 +99,18 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     return E;
 
   removeSections(Config, Obj);
+
+  // Mark symbols to determine which symbols are still needed.
+  if (Config.StripAll)
+    markSymbols(Config, Obj);
+
+  removeSymbols(Config, Obj);
+
+  if (Config.StripAll)
+    for (LoadCommand &LC : Obj.LoadCommands)
+      for (Section &Sec : LC.Sections)
+        Sec.Relocations.clear();
+
   return Error::success();
 }
 

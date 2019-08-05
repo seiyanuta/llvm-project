@@ -23,6 +23,12 @@ using SectionPred = std::function<bool(const Section &Sec)>;
 static void removeSections(const CopyConfig &Config, Object &Obj) {
   SectionPred RemovePred = [](const Section &) { return false; };
 
+  if (!Config.ToRemove.empty()) {
+    RemovePred = [&Config, RemovePred](const Section &Sec) {
+      return is_contained(Config.ToRemove, Sec.CannonicalName);
+    };
+  }
+
   if (Config.StripAll) {
     // Remove all debug sections.
     RemovePred = [RemovePred](const Section &Sec) {
@@ -69,6 +75,12 @@ static Error validateOptions(const CopyConfig &Config) {
         return E;
   }
 
+  if (!Config.ToRemove.empty()) {
+    for (const NameOrRegex &NR : Config.ToRemove)
+      if (Error E = NR.isMachOCannonicalName())
+        return E;
+  }
+
   return Error::success();
 }
 
@@ -83,14 +95,13 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
       !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
-      !Config.SetSectionFlags.empty() || !Config.ToRemove.empty() ||
-      Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
-      Config.PreserveDates || Config.StripAllGNU || Config.StripDWO ||
-      Config.StripNonAlloc || Config.StripSections || Config.Weaken ||
-      Config.DecompressDebugSections || Config.StripDebug ||
-      Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded ||
-      Config.DiscardMode != DiscardType::None || !Config.SymbolsToAdd.empty() ||
-      Config.EntryExpr) {
+      !Config.SetSectionFlags.empty() || Config.ExtractDWO ||
+      Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
+      Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
+      Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
+      Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
+      Config.StripUnneeded || Config.DiscardMode != DiscardType::None ||
+      !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");
   }

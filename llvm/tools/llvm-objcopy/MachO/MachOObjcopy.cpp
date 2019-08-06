@@ -97,6 +97,28 @@ static Error addSection(StringRef SecName, StringRef Filename, Object &Obj) {
   return Error::success();
 }
 
+static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
+                               Object &Obj) {
+  for (LoadCommand &LC : Obj.LoadCommands)
+    for (Section &Sec : LC.Sections) {
+      if (Sec.CannonicalName == SecName) {
+        Expected<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
+            FileOutputBuffer::create(Filename, Sec.Content.size());
+        if (!BufferOrErr)
+          return BufferOrErr.takeError();
+        std::unique_ptr<FileOutputBuffer> Buf = std::move(*BufferOrErr);
+        std::copy(Sec.Content.begin(), Sec.Content.end(),
+                  Buf->getBufferStart());
+        if (Error E = Buf->commit())
+          return E;
+        return Error::success();
+      }
+    }
+
+  return createStringError(object_error::parse_failed, "section '%s' not found",
+                           SecName.str().c_str());
+}
+
 static Error validateOptions(const CopyConfig &Config) {
   // TODO: Support section renaming in GNU objcopy for compatibility (see
   // http://lists.llvm.org/pipermail/llvm-dev/2019-May/132570.html).
@@ -120,11 +142,11 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
       !Config.SplitDWO.empty() || !Config.SymbolsPrefix.empty() ||
-      !Config.AllocSectionsPrefix.empty() || !Config.DumpSection.empty() ||
-      !Config.KeepSection.empty() || !Config.SymbolsToGlobalize.empty() ||
-      !Config.SymbolsToKeep.empty() || !Config.SymbolsToLocalize.empty() ||
-      !Config.SymbolsToWeaken.empty() || !Config.SymbolsToKeepGlobal.empty() ||
-      !Config.SectionsToRename.empty() || !Config.SymbolsToRename.empty() ||
+      !Config.AllocSectionsPrefix.empty() || !Config.KeepSection.empty() ||
+      !Config.SymbolsToGlobalize.empty() || !Config.SymbolsToKeep.empty() ||
+      !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
+      !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
+      !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
       !Config.SetSectionFlags.empty() || Config.ExtractDWO ||
       Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
@@ -162,6 +184,16 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     for (LoadCommand &LC : Obj.LoadCommands)
       for (Section &Sec : LC.Sections)
         Sec.Relocations.clear();
+
+  for (const auto &Flag : Config.DumpSection) {
+    std::pair<StringRef, StringRef> SecPair = Flag.split("=");
+    StringRef SecName = SecPair.first;
+    StringRef File = SecPair.second;
+    if (Error E = isValidMachOCannonicalName(SecName))
+      return E;
+    if (Error E = dumpSectionToFile(SecName, File, Obj))
+      return E;
+  }
 
   return Error::success();
 }

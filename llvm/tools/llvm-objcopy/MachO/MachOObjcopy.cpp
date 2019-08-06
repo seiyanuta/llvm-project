@@ -166,6 +166,29 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   return Error::success();
 }
 
+Error writeOutput(Object &O, Buffer &Out, bool Is64Bit, bool IsLittleEndian) {
+  // TODO: Support 16KB pages which are employed in iOS arm64 binaries:
+  //       https://github.com/llvm/llvm-project/commit/1bebb2832ee312d3b0316dacff457a7a29435edb
+  const uint64_t PageSize = 4096;
+
+  MachOWriter Writer(O, Is64Bit, IsLittleEndian, PageSize, Out);
+  if (auto E = Writer.finalize())
+    return E;
+  return Writer.write();
+}
+
+Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
+                                Buffer &Out) {
+  const MachineInfo &MI = Config.BinaryArch;
+  BinaryReader Reader(MI, In);
+  std::unique_ptr<Object> O = Reader.create();
+
+  if (Error E = handleArgs(Config, *O))
+    return createFileError(Config.InputFilename, std::move(E));
+
+  return writeOutput(*O, Out, MI.Is64Bit, MI.IsLittleEndian);
+}
+
 Error executeObjcopyOnBinary(const CopyConfig &Config,
                              object::MachOObjectFile &In, Buffer &Out) {
   MachOReader Reader(In);
@@ -179,14 +202,7 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  // TODO: Support 16KB pages which are employed in iOS arm64 binaries:
-  //       https://github.com/llvm/llvm-project/commit/1bebb2832ee312d3b0316dacff457a7a29435edb
-  const uint64_t PageSize = 4096;
-
-  MachOWriter Writer(*O, In.is64Bit(), In.isLittleEndian(), PageSize, Out);
-  if (auto E = Writer.finalize())
-    return E;
-  return Writer.write();
+  return writeOutput(*O, Out, In.is64Bit(), In.isLittleEndian());
 }
 
 } // end namespace macho

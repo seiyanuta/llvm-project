@@ -141,6 +141,8 @@ static Error executeObjcopyOnIHex(const CopyConfig &Config, MemoryBuffer &In,
 static Error executeObjcopyOnRawBinary(const CopyConfig &Config,
                                        MemoryBuffer &In, Buffer &Out) {
   switch (Config.OutputFormat) {
+  case FileFormat::MachO:
+    return macho::executeObjcopyOnRawBinary(Config, In, Out);
   case FileFormat::ELF:
   // FIXME: Currently, we call elf::executeObjcopyOnRawBinary even if the
   // output format is binary/ihex or it's not given. This behavior differs from

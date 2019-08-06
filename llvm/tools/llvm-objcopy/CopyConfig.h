@@ -29,6 +29,7 @@ namespace objcopy {
 enum class FileFormat {
   Unspecified,
   ELF,
+  MachO,
   Binary,
   IHex,
 };
@@ -37,15 +38,26 @@ enum class FileFormat {
 // lets us map architecture names to ELF types and the e_machine value of the
 // ELF file.
 struct MachineInfo {
-  MachineInfo(uint16_t EM, uint8_t ABI, bool Is64, bool IsLittle)
-      : EMachine(EM), OSABI(ABI), Is64Bit(Is64), IsLittleEndian(IsLittle) {}
+  MachineInfo(uint16_t EM, uint8_t ABI, uint32_t MachOCPUType,
+              uint32_t MachOCPUSubType, bool Is64, bool IsLittle)
+      : EMachine(EM), OSABI(ABI), MachOCPUType(MachOCPUType),
+        MachOCPUSubType(MachOCPUSubType), Is64Bit(Is64),
+        IsLittleEndian(IsLittle) {}
   // Alternative constructor that defaults to NONE for OSABI.
-  MachineInfo(uint16_t EM, bool Is64, bool IsLittle)
-      : MachineInfo(EM, ELF::ELFOSABI_NONE, Is64, IsLittle) {}
+  MachineInfo(uint16_t EM, uint32_t MachOCPUType, uint32_t MachOSubCPUType,
+              bool Is64, bool IsLittle)
+      : MachineInfo(EM, ELF::ELFOSABI_NONE, MachOCPUType, MachOSubCPUType, Is64,
+                    IsLittle) {}
   // Default constructor for unset fields.
-  MachineInfo() : MachineInfo(0, 0, false, false) {}
+  MachineInfo() : MachineInfo(0, 0, 0, 0, false, false) {}
+
+  // ELF values.
   uint16_t EMachine;
   uint8_t OSABI;
+  // MachO values.
+  uint32_t MachOCPUType;
+  uint32_t MachOCPUSubType;
+  // Common values.
   bool Is64Bit;
   bool IsLittleEndian;
 };

@@ -6,10 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../CopyConfig.h"
 #include "MachOObjcopy.h"
 #include "Object.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Object/MachO.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include <memory>
 
 namespace llvm {
@@ -43,6 +45,20 @@ class MachOReader : public Reader {
 public:
   explicit MachOReader(const object::MachOObjectFile &Obj) : MachOObj(Obj) {}
 
+  std::unique_ptr<Object> create() const override;
+};
+
+class BinaryReader : public Reader {
+  const MachineInfo &MI;
+  MemoryBuffer &Input;
+  std::unique_ptr<WritableMemoryBuffer> SectionContent;
+
+public:
+  BinaryReader(const MachineInfo &MI, MemoryBuffer &Input)
+      : MI(MI), Input(Input) {
+    SectionContent =
+        WritableMemoryBuffer::getNewUninitMemBuffer(Input.getBufferSize());
+  }
   std::unique_ptr<Object> create() const override;
 };
 

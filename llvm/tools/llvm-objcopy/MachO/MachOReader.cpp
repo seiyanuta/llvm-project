@@ -173,13 +173,8 @@ template <typename nlist_t>
 SymbolEntry constructSymbolEntry(StringRef StrTable, const nlist_t &nlist) {
   assert(nlist.n_strx < StrTable.size() &&
          "n_strx exceeds the size of the string table");
-  SymbolEntry SE;
-  SE.Name = StringRef(StrTable.data() + nlist.n_strx).str();
-  SE.n_type = nlist.n_type;
-  SE.n_sect = nlist.n_sect;
-  SE.n_desc = nlist.n_desc;
-  SE.n_value = nlist.n_value;
-  return SE;
+  return SymbolEntry(StringRef(StrTable.data() + nlist.n_strx).str(),
+                     nlist.n_type, nlist.n_sect, nlist.n_desc, nlist.n_value);
 }
 
 void MachOReader::readSymbolTable(Object &O) const {
@@ -277,6 +272,84 @@ std::unique_ptr<Object> MachOReader::create() const {
   readDataInCodeData(*Obj);
   readFunctionStartsData(*Obj);
   readIndirectSymbolTable(*Obj);
+  return Obj;
+}
+
+std::unique_ptr<Object> BinaryReader::create() const {
+  assert(MI.Is64Bit && "32-bit object is not yet supported");
+  auto Obj = std::make_unique<Object>();
+
+  size_t HeaderSize =
+      MI.Is64Bit ? sizeof(MachO::mach_header_64) : sizeof(MachO::mach_header);
+  size_t SegLoadCommandSize =
+      MI.Is64Bit
+          ? (sizeof(MachO::segment_command_64) + sizeof(MachO::section_64))
+          : (sizeof(MachO::segment_command) + sizeof(MachO::section));
+  size_t SizeOfCmds = SegLoadCommandSize + sizeof(MachO::symtab_command) +
+                      sizeof(MachO::dysymtab_command);
+  uint64_t SegOffset = HeaderSize + SizeOfCmds;
+  Obj->Header.Magic = MI.Is64Bit ? MachO::MH_MAGIC_64 : MachO::MH_MAGIC;
+  Obj->Header.CPUType = MI.MachOCPUType;
+  Obj->Header.CPUSubType = MI.MachOCPUSubType;
+  Obj->Header.FileType = MachO::MH_OBJECT;
+  Obj->Header.NCmds = 1;
+  Obj->Header.Flags = 0;
+  Obj->Header.SizeOfCmds = SizeOfCmds;
+
+  LoadCommand &LC = Obj->addSegment("");
+  MachO::segment_command_64 &Seg = LC.MachOLoadCommand.segment_command_64_data;
+  Seg.vmsize = SectionContent->getBufferSize();
+  Seg.fileoff = SegOffset;
+  Seg.filesize = SectionContent->getBufferSize();
+  Seg.maxprot =
+      MachO::VM_PROT_READ | MachO::VM_PROT_WRITE | MachO::VM_PROT_EXECUTE;
+  Seg.initprot =
+      MachO::VM_PROT_READ | MachO::VM_PROT_WRITE | MachO::VM_PROT_EXECUTE;
+
+  Section Sec("__DATA", "__data");
+  Sec.Size = SectionContent->getBufferSize();
+  Sec.Offset = SegOffset;
+  memcpy(SectionContent->getBufferStart(), Input.getBufferStart(),
+         Input.getBufferSize());
+  Sec.setOwnedContentData(ArrayRef<uint8_t>(
+      reinterpret_cast<const uint8_t *>(SectionContent->getBufferStart()),
+      SectionContent->getBufferSize()));
+  LC.Sections.push_back(Sec);
+
+  LoadCommand DySymTab;
+  MachO::dysymtab_command &DySymTabData =
+      DySymTab.MachOLoadCommand.dysymtab_command_data;
+  memset(&DySymTabData, 0, sizeof(DySymTabData));
+  DySymTabData.cmd = MachO::LC_DYSYMTAB;
+  DySymTabData.cmdsize = sizeof(MachO::dysymtab_command);
+
+  LoadCommand SymTab;
+  MachO::symtab_command &SymTabData =
+      SymTab.MachOLoadCommand.symtab_command_data;
+  memset(&SymTabData, 0, sizeof(SymTabData));
+  SymTabData.cmd = MachO::LC_SYMTAB;
+  SymTabData.cmdsize = sizeof(MachO::symtab_command);
+
+  Obj->LoadCommands.push_back(DySymTab);
+  Obj->DySymTabCommandIndex = Obj->LoadCommands.size() - 1;
+  Obj->LoadCommands.push_back(SymTab);
+  Obj->SymTabCommandIndex = Obj->LoadCommands.size() - 1;
+
+  std::string SanitizedFilename = Input.getBufferIdentifier().str();
+  // Replace characters that are not valid for symbol name.
+  std::replace_if(
+      std::begin(SanitizedFilename), std::end(SanitizedFilename),
+      [](char C) { return !isalnum(C); }, '_');
+  Twine Prefix = Twine("__binary_") + SanitizedFilename;
+
+  Obj->SymTable.addSymbol(Prefix + "_size", MachO::N_ABS | MachO::N_EXT, 0,
+                          MachO::REFERENCE_FLAG_DEFINED, Input.getBufferSize());
+  Obj->SymTable.addSymbol(Prefix + "_start", MachO::N_SECT | MachO::N_EXT, 1,
+                          MachO::REFERENCE_FLAG_DEFINED, 0);
+  Obj->SymTable.addSymbol(Prefix + "_end", MachO::N_SECT | MachO::N_EXT, 1,
+                          MachO::REFERENCE_FLAG_DEFINED,
+                          SectionContent->getBufferSize());
+
   return Obj;
 }
 

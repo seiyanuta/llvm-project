@@ -1,0 +1,102 @@
+# Show that if -I binary is given, llvm-objopy creates a MachO object which
+# contains input file contents.
+
+RUN: not llvm-objcopy -Ibinary -B x86-64 -Omach-o-x86-64 %t.nonexistent %t.o.nonexistent 2>&1 \
+RUN:   | FileCheck %s -DINPUT=%t.nonexistent --check-prefix=NONEXSITENT-FILE
+NONEXSITENT-FILE: error: '[[INPUT]]': No such file or directory
+
+RUN: echo -n abcdefg > %t.input
+RUN: llvm-objcopy -Ibinary -B x86-64 -Omach-o-x86-64 %t.input %t.o
+RUN: llvm-readobj --sections --section-data --symbols --macho-segment --macho-dysymtab %t.o \
+RUN:   | FileCheck %s
+
+CHECK:       Format: Mach-O 64-bit x86-64
+CHECK-NEXT:  Arch: x86_64
+CHECK-NEXT:  AddressSize: 64bit
+CHECK-NEXT:  Sections [
+CHECK-NEXT:    Section {
+CHECK-NEXT:      Index: 0
+CHECK-NEXT:      Name: __data (5F 5F 64 61 74 61 00 00 00 00 00 00 00 00 00 00)
+CHECK-NEXT:      Segment: __DATA (5F 5F 44 41 54 41 00 00 00 00 00 00 00 00 00 00)
+CHECK-NEXT:      Address: 0x0
+CHECK-NEXT:      Size: 0x7
+CHECK-NEXT:      Offset: 288
+CHECK-NEXT:      Alignment: 0
+CHECK-NEXT:      RelocationOffset: 0x0
+CHECK-NEXT:      RelocationCount: 0
+CHECK-NEXT:      Type: Regular (0x0)
+CHECK-NEXT:      Attributes [ (0x0)
+CHECK-NEXT:      ]
+CHECK-NEXT:      Reserved1: 0x0
+CHECK-NEXT:      Reserved2: 0x0
+CHECK-NEXT:      Reserved3: 0x0
+CHECK-NEXT:      SectionData (
+CHECK-NEXT:        0000: 61626364 656667 |abcdefg|
+CHECK-NEXT:      )
+CHECK-NEXT:    }
+CHECK-NEXT:  ]
+CHECK-NEXT:  Symbols [
+CHECK-NEXT:    Symbol {
+CHECK-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_size
+CHECK-NEXT:      Extern
+CHECK-NEXT:      Type: Abs (0x2)
+CHECK-NEXT:      Section: (0x0)
+CHECK-NEXT:      RefType: ReferenceFlagDefined (0x2)
+CHECK-NEXT:      Flags [ (0x0)
+CHECK-NEXT:      ]
+CHECK-NEXT:      Value: 0x7
+CHECK-NEXT:    }
+CHECK-NEXT:    Symbol {
+CHECK-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_start
+CHECK-NEXT:      Extern
+CHECK-NEXT:      Type: Section (0xE)
+CHECK-NEXT:      Section: __data (0x1)
+CHECK-NEXT:      RefType: ReferenceFlagDefined (0x2)
+CHECK-NEXT:      Flags [ (0x0)
+CHECK-NEXT:      ]
+CHECK-NEXT:      Value: 0x0
+CHECK-NEXT:    }
+CHECK-NEXT:    Symbol {
+CHECK-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_end
+CHECK-NEXT:      Extern
+CHECK-NEXT:      Type: Section (0xE)
+CHECK-NEXT:      Section: __data (0x1)
+CHECK-NEXT:      RefType: ReferenceFlagDefined (0x2)
+CHECK-NEXT:      Flags [ (0x0)
+CHECK-NEXT:      ]
+CHECK-NEXT:      Value: 0x7
+CHECK-NEXT:    }
+CHECK-NEXT:  ]
+CHECK-NEXT:  Segment {
+CHECK-NEXT:    Cmd: LC_SEGMENT_64
+CHECK-NEXT:    Name:
+CHECK-NEXT:    Size: 152
+CHECK-NEXT:    vmaddr: 0x0
+CHECK-NEXT:    vmsize: 0x7
+CHECK-NEXT:    fileoff: 288
+CHECK-NEXT:    filesize: 7
+CHECK-NEXT:    maxprot: rwx
+CHECK-NEXT:    initprot: rwx
+CHECK-NEXT:    nsects: 1
+CHECK-NEXT:    flags: 0x0
+CHECK-NEXT:  }
+CHECK-NEXT:  Dysymtab {
+CHECK-NEXT:    ilocalsym: 0
+CHECK-NEXT:    nlocalsym: 0
+CHECK-NEXT:    iextdefsym: 0
+CHECK-NEXT:    nextdefsym: 3
+CHECK-NEXT:    iundefsym: 3
+CHECK-NEXT:    nundefsym: 0
+CHECK-NEXT:    tocoff: 0
+CHECK-NEXT:    ntoc: 0
+CHECK-NEXT:    modtaboff: 0
+CHECK-NEXT:    nmodtab: 0
+CHECK-NEXT:    extrefsymoff: 0
+CHECK-NEXT:    nextrefsyms: 0
+CHECK-NEXT:    indirectsymoff: 0
+CHECK-NEXT:    nindirectsyms: 0
+CHECK-NEXT:    extreloff: 0
+CHECK-NEXT:    nextrel: 0
+CHECK-NEXT:    locreloff: 0
+CHECK-NEXT:    nlocrel: 0
+CHECK-NEXT:  }

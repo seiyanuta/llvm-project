@@ -25,6 +25,12 @@ void SymbolTable::removeSymbols(
       std::end(Symbols));
 }
 
+void SymbolTable::addSymbol(Twine Name, uint8_t Type, uint8_t Sect,
+                            uint16_t Desc, uint64_t Value) {
+  Symbols.push_back(
+      std::make_unique<SymbolEntry>(Name.str(), Type, Sect, Desc, Value));
+}
+
 void Object::removeSections(function_ref<bool(const Section &)> ToRemove) {
   for (LoadCommand &LC : LoadCommands)
     LC.Sections.erase(std::remove_if(std::begin(LC.Sections),

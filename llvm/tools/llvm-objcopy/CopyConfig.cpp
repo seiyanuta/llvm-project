@@ -12,6 +12,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/CommandLine.h"
@@ -256,18 +257,20 @@ static Expected<NewSymbolInfo> parseNewSymbolInfo(StringRef FlagValue) {
 }
 
 static const StringMap<MachineInfo> ArchMap{
-    // Name, {EMachine, 64bit, LittleEndian}
-    {"aarch64", {ELF::EM_AARCH64, true, true}},
-    {"arm", {ELF::EM_ARM, false, true}},
-    {"i386", {ELF::EM_386, false, true}},
-    {"i386:x86-64", {ELF::EM_X86_64, true, true}},
-    {"mips", {ELF::EM_MIPS, false, false}},
-    {"powerpc:common64", {ELF::EM_PPC64, true, true}},
-    {"riscv:rv32", {ELF::EM_RISCV, false, true}},
-    {"riscv:rv64", {ELF::EM_RISCV, true, true}},
-    {"sparc", {ELF::EM_SPARC, false, false}},
-    {"sparcel", {ELF::EM_SPARC, false, true}},
-    {"x86-64", {ELF::EM_X86_64, true, true}},
+    // Name, {EMachine, MachOCPUType, MachOCPUSubType, 64bit, LittleEndian}
+    {"aarch64", {ELF::EM_AARCH64, 0, 0, true, true}},
+    {"arm", {ELF::EM_ARM, 0, 0, false, true}},
+    {"i386", {ELF::EM_386, 0, 0, false, true}},
+    {"i386:x86-64", {ELF::EM_X86_64, 0, 0, true, true}},
+    {"mips", {ELF::EM_MIPS, 0, 0, false, false}},
+    {"powerpc:common64", {ELF::EM_PPC64, 0, 0, true, true}},
+    {"riscv:rv32", {ELF::EM_RISCV, 0, 0, false, true}},
+    {"riscv:rv64", {ELF::EM_RISCV, 0, 0, true, true}},
+    {"sparc", {ELF::EM_SPARC, 0, 0, false, false}},
+    {"sparcel", {ELF::EM_SPARC, 0, 0, false, true}},
+    {"x86-64",
+     {ELF::EM_X86_64, MachO::CPU_TYPE_X86_64, MachO::CPU_SUBTYPE_X86_64_ALL,
+      true, true}},
 };
 
 static Expected<const MachineInfo &> getMachineInfo(StringRef Arch) {
@@ -285,37 +288,39 @@ struct TargetInfo {
 
 // FIXME: consolidate with the bfd parsing used by lld.
 static const StringMap<MachineInfo> TargetMap{
-    // Name, {EMachine, 64bit, LittleEndian}
+    // Name, {EMachine, MachOCPUType, MachOCPUSubType, 64bit, LittleEndian}
     // x86
-    {"elf32-i386", {ELF::EM_386, false, true}},
-    {"elf32-x86-64", {ELF::EM_X86_64, false, true}},
-    {"elf64-x86-64", {ELF::EM_X86_64, true, true}},
+    {"elf32-i386", {ELF::EM_386, 0, 0, false, true}},
+    {"elf32-x86-64", {ELF::EM_X86_64, 0, 0, false, true}},
+    {"elf64-x86-64", {ELF::EM_X86_64, 0, 0, true, true}},
+    {"mach-o-x86-64",
+     {0, MachO::CPU_TYPE_X86_64, MachO::CPU_SUBTYPE_X86_64_ALL, true, true}},
     // Intel MCU
-    {"elf32-iamcu", {ELF::EM_IAMCU, false, true}},
+    {"elf32-iamcu", {ELF::EM_IAMCU, 0, 0, false, true}},
     // ARM
-    {"elf32-littlearm", {ELF::EM_ARM, false, true}},
+    {"elf32-littlearm", {ELF::EM_ARM, 0, 0, false, true}},
     // ARM AArch64
-    {"elf64-aarch64", {ELF::EM_AARCH64, true, true}},
-    {"elf64-littleaarch64", {ELF::EM_AARCH64, true, true}},
+    {"elf64-aarch64", {ELF::EM_AARCH64, 0, 0, true, true}},
+    {"elf64-littleaarch64", {ELF::EM_AARCH64, 0, 0, true, true}},
     // RISC-V
-    {"elf32-littleriscv", {ELF::EM_RISCV, false, true}},
-    {"elf64-littleriscv", {ELF::EM_RISCV, true, true}},
+    {"elf32-littleriscv", {ELF::EM_RISCV, 0, 0, false, true}},
+    {"elf64-littleriscv", {ELF::EM_RISCV, 0, 0, true, true}},
     // PowerPC
-    {"elf32-powerpc", {ELF::EM_PPC, false, false}},
-    {"elf32-powerpcle", {ELF::EM_PPC, false, true}},
-    {"elf64-powerpc", {ELF::EM_PPC64, true, false}},
-    {"elf64-powerpcle", {ELF::EM_PPC64, true, true}},
+    {"elf32-powerpc", {ELF::EM_PPC, 0, 0, false, false}},
+    {"elf32-powerpcle", {ELF::EM_PPC, 0, 0, false, true}},
+    {"elf64-powerpc", {ELF::EM_PPC64, 0, 0, true, false}},
+    {"elf64-powerpcle", {ELF::EM_PPC64, 0, 0, true, true}},
     // MIPS
-    {"elf32-bigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-ntradbigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-ntradlittlemips", {ELF::EM_MIPS, false, true}},
-    {"elf32-tradbigmips", {ELF::EM_MIPS, false, false}},
-    {"elf32-tradlittlemips", {ELF::EM_MIPS, false, true}},
-    {"elf64-tradbigmips", {ELF::EM_MIPS, true, false}},
-    {"elf64-tradlittlemips", {ELF::EM_MIPS, true, true}},
+    {"elf32-bigmips", {ELF::EM_MIPS, 0, 0, false, false}},
+    {"elf32-ntradbigmips", {ELF::EM_MIPS, 0, 0, false, false}},
+    {"elf32-ntradlittlemips", {ELF::EM_MIPS, 0, 0, false, true}},
+    {"elf32-tradbigmips", {ELF::EM_MIPS, 0, 0, false, false}},
+    {"elf32-tradlittlemips", {ELF::EM_MIPS, 0, 0, false, true}},
+    {"elf64-tradbigmips", {ELF::EM_MIPS, 0, 0, true, false}},
+    {"elf64-tradlittlemips", {ELF::EM_MIPS, 0, 0, true, true}},
     // SPARC
-    {"elf32-sparc", {ELF::EM_SPARC, false, false}},
-    {"elf32-sparcel", {ELF::EM_SPARC, false, true}},
+    {"elf32-sparc", {ELF::EM_SPARC, 0, 0, false, false}},
+    {"elf32-sparcel", {ELF::EM_SPARC, 0, 0, false, true}},
 };
 
 static Expected<TargetInfo>
@@ -334,6 +339,8 @@ getOutputTargetInfoByTargetName(StringRef TargetName) {
   FileFormat Format;
   if (TargetName.startswith("elf"))
     Format = FileFormat::ELF;
+  else if (TargetName.startswith("mach-o"))
+    Format = FileFormat::MachO;
   else
     // This should never happen because `TargetName` is valid (it certainly
     // exists in the TargetMap).

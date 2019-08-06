@@ -123,6 +123,10 @@ struct SymbolEntry {
   uint16_t n_desc;
   uint64_t n_value;
 
+  SymbolEntry(std::string Name, uint8_t Type, uint8_t Sect, uint16_t Desc,
+              uint64_t Value)
+      : Name(Name), n_type(Type), n_sect(Sect), n_desc(Desc), n_value(Value) {}
+
   bool isExternalSymbol() const {
     return n_type & ((MachO::N_EXT | MachO::N_PEXT));
   }
@@ -143,6 +147,8 @@ struct SymbolTable {
   SymbolEntry *getSymbolByIndex(uint32_t Index);
   void removeSymbols(
       function_ref<bool(const std::unique_ptr<SymbolEntry> &)> ToRemove);
+  void addSymbol(Twine Name, uint8_t Type, uint8_t Sect, uint16_t Desc,
+                 uint64_t Value);
 };
 
 struct IndirectSymbolEntry {

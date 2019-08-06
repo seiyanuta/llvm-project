@@ -28,6 +28,7 @@ add_llvm_tool(llvm-objcopy
   MachO/MachOWriter.cpp
   MachO/MachOLayoutBuilder.cpp
   MachO/Object.cpp
+  MachO/Utils.cpp
   DEPENDS
   ObjcopyOptsTableGen
   StripOptsTableGen

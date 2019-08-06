@@ -65,11 +65,43 @@ static void removeSymbols(const CopyConfig &Config, Object &Obj) {
   Obj.SymTable.removeSymbols(RemovePred);
 }
 
+static Error addSection(StringRef SecName, StringRef Filename, Object &Obj) {
+  // FIXME: Read the file in CopyConfig.
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BufOrErr =
+      MemoryBuffer::getFile(Filename);
+  if (!BufOrErr)
+    return createFileError(Filename, errorCodeToError(BufOrErr.getError()));
+  std::unique_ptr<MemoryBuffer> Buf = std::move(*BufOrErr);
+  ArrayRef<uint8_t> Content(
+      reinterpret_cast<const uint8_t *>(Buf->getBufferStart()),
+      Buf->getBufferSize());
+
+  std::pair<StringRef, StringRef> Pair = SecName.split(',');
+  StringRef TargetSegName = Pair.first;
+  Section Sec(TargetSegName, Pair.second);
+  Sec.setOwnedContentData(Content);
+
+  for (LoadCommand &LC : Obj.LoadCommands) {
+    Optional<StringRef> SegName = LC.getSegmentName();
+    if (SegName && SegName == TargetSegName) {
+      LC.Sections.push_back(Sec);
+      return Error::success();
+    }
+  }
+
+  // There's no segment named TargetSegName. Create a new load command and
+  // Insert a new section into it.
+  // TODO: 32-bit
+  LoadCommand &NewSegment = Obj.addSegment(TargetSegName);
+  NewSegment.Sections.push_back(Sec);
+  return Error::success();
+}
+
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
       !Config.SplitDWO.empty() || !Config.SymbolsPrefix.empty() ||
-      !Config.AllocSectionsPrefix.empty() || !Config.AddSection.empty() ||
+      !Config.AllocSectionsPrefix.empty() ||
       !Config.DumpSection.empty() || !Config.KeepSection.empty() ||
       Config.NewSymbolVisibility || !Config.SymbolsToGlobalize.empty() ||
       !Config.SymbolsToKeep.empty() || !Config.SymbolsToLocalize.empty() ||
@@ -95,6 +127,16 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     markSymbols(Config, Obj);
 
   removeSymbols(Config, Obj);
+
+  for (const auto &Flag : Config.AddSection) {
+    std::pair<StringRef, StringRef> SecPair = Flag.split("=");
+    StringRef SecName = SecPair.first;
+    StringRef File = SecPair.second;
+    if (Error E = isValidMachOCanonicalName(SecName))
+      return E;
+    if (Error E = addSection(SecName, File, Obj))
+      return E;
+  }
 
   if (Config.StripAll)
     for (LoadCommand &LC : Obj.LoadCommands)

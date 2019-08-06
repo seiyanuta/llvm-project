@@ -1,5 +1,8 @@
 #include "Object.h"
 #include "../llvm-objcopy.h"
+#include "Utils.h"
+#include "llvm/Support/Errc.h"
+#include "llvm/Support/ErrorOr.h"
 
 namespace llvm {
 namespace objcopy {
@@ -27,6 +30,34 @@ void Object::removeSections(function_ref<bool(const Section &)> ToRemove) {
     LC.Sections.erase(std::remove_if(std::begin(LC.Sections),
                                      std::end(LC.Sections), ToRemove),
                       std::end(LC.Sections));
+}
+
+LoadCommand &Object::addSegment(StringRef SegName) {
+  assert(is64Bit() && "adding segment_command is not yet supported");
+
+  LoadCommand LC;
+  MachO::segment_command_64 &Seg = LC.MachOLoadCommand.segment_command_64_data;
+
+  assert(SegName.size() <= sizeof(Seg.segname) && "too long segment name");
+
+  memset(&Seg, 0, sizeof(MachO::segment_command_64));
+  Seg.cmd = MachO::LC_SEGMENT_64;
+  strncpy(Seg.segname, SegName.data(), SegName.size());
+  LoadCommands.push_back(LC);
+
+  return LoadCommands.back();
+}
+
+Optional<StringRef> LoadCommand::getSegmentName() const {
+  const MachO::macho_load_command &MLC = MachOLoadCommand;
+  switch (MLC.load_command_data.cmd) {
+  case MachO::LC_SEGMENT:
+    return extractSegmentName(MLC.segment_command_data.segname);
+  case MachO::LC_SEGMENT_64:
+    return extractSegmentName(MLC.segment_command_64_data.segname);
+  default:
+    return None;
+  }
 }
 
 } // end namespace macho

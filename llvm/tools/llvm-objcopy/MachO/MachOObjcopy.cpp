@@ -119,6 +119,18 @@ static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
                            SecName.str().c_str());
 }
 
+static uint32_t getNewSectionFlags(const SectionFlag &SF) {
+  if ((SF & SecCode) != 0)
+    return MachO::S_REGULAR | MachO::S_ATTR_PURE_INSTRUCTIONS |
+           MachO::S_ATTR_SOME_INSTRUCTIONS;
+  else if ((SF & SecAlloc) != 0 && (SF & SecLoad) == 0)
+    return MachO::S_ZEROFILL;
+  else if ((SF & SecDebug) != 0)
+    return MachO::S_ATTR_DEBUG;
+  else
+    return MachO::S_REGULAR;
+}
+
 static Error validateOptions(const CopyConfig &Config) {
   // TODO: Support section renaming in GNU objcopy for compatibility (see
   // http://lists.llvm.org/pipermail/llvm-dev/2019-May/132570.html).
@@ -135,6 +147,12 @@ static Error validateOptions(const CopyConfig &Config) {
         return E;
   }
 
+  if (!Config.SetSectionFlags.empty()) {
+    for (const auto &Entry : Config.SetSectionFlags)
+      if (Error E = isValidMachOCannonicalName(Entry.getKey()))
+        return E;
+  }
+
   return Error::success();
 }
 
@@ -147,8 +165,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
       !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
       !Config.SymbolsToRename.empty() ||
-      !Config.UnneededSymbolsToRemove.empty() ||
-      !Config.SetSectionFlags.empty() || Config.ExtractDWO ||
+      !Config.UnneededSymbolsToRemove.empty() || Config.ExtractDWO ||
       Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
       Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
@@ -169,6 +186,14 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     markSymbols(Config, Obj);
 
   removeSymbols(Config, Obj);
+
+  if (!Config.SetSectionFlags.empty())
+    for (LoadCommand &LC : Obj.LoadCommands)
+      for (Section &Sec : LC.Sections) {
+        const auto Iter = Config.SetSectionFlags.find(Sec.CannonicalName);
+        if (Iter != Config.SetSectionFlags.end())
+          Sec.Flags = getNewSectionFlags(Iter->second.NewFlags);
+      }
 
   for (const auto &Flag : Config.AddSection) {
     std::pair<StringRef, StringRef> SecPair = Flag.split("=");

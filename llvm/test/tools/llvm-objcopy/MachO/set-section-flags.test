@@ -1,0 +1,111 @@
+## Show that llvm-objcopy can modify section flags in MachO.
+
+# RUN: yaml2obj %s > %t
+
+## Error case 1: An invalid section name.
+# RUN: not llvm-objcopy --set-section-flags=__bar=alloc %t %t.invalid-section-name 2>&1 \
+# RUN:   | FileCheck %s -DINPUT=%t --check-prefix=INVALID-SECTION-NAME
+# INVALID-SECTION-NAME: error: '[[INPUT]]': invalid section name '__bar' (should be formatted as '<segment name>,<section name>')
+
+# RUN: llvm-objcopy --set-section-flags=__FOO,__bar=alloc %t %t.alloc
+# RUN: llvm-readobj --sections %t.alloc | FileCheck %s --check-prefixes=COMMON,ZEROFILL
+# RUN: llvm-objcopy --set-section-flags=__FOO,__bar=code %t %t.code
+# RUN: llvm-readobj --sections %t.code | FileCheck %s --check-prefixes=COMMON,CODE
+# RUN: llvm-objcopy --set-section-flags=__FOO,__bar=debug %t %t.debug
+# RUN: llvm-readobj --sections %t.debug | FileCheck %s --check-prefixes=COMMON,DEBUG
+
+--- !mach-o
+FileHeader:
+  magic:           0xFEEDFACF
+  cputype:         0x01000007
+  cpusubtype:      0x80000003
+  filetype:        0x00000002
+  ncmds:           1
+  sizeofcmds:      232
+  flags:           0x00002000
+  reserved:        0x00000000
+LoadCommands:
+  - cmd:             LC_SEGMENT_64
+    cmdsize:         232
+    segname:         '__FOO'
+    vmaddr:          0x0000000000001000
+    vmsize:          4096
+    fileoff:         0
+    filesize:        4096
+    maxprot:         7
+    initprot:        7
+    nsects:          2
+    flags:           0
+    Sections:
+      - sectname:        __bar
+        segname:         __FOO
+        addr:            0x00000000000110c
+        content:         'AABBCCDD'
+        size:            4
+        offset:          0x0000010c
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x00000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+      - sectname:        __baz
+        segname:         __FOO
+        addr:            0x0000000000001ffe
+        size:            2
+        content:         'EEFF'
+        offset:          0x00000ffe
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x00000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+
+# COMMON:       Sections [
+# COMMON-NEXT:    Section {
+# COMMON-NEXT:      Index: 0
+# COMMON-NEXT:      Name: __bar (5F 5F 62 61 72 00 00 00 00 00 00 00 00 00 00 00)
+# COMMON-NEXT:      Segment: __FOO (5F 5F 46 4F 4F 00 00 00 00 00 00 00 00 00 00 00)
+# COMMON-NEXT:      Address: 0x110C
+# COMMON-NEXT:      Size: 0x4
+# ZEROFILL-NEXT:    Offset: 0
+# CODE-NEXT:        Offset: 268
+# DEBUG-NEXT:       Offset: 268
+# COMMON-NEXT:      Alignment: 0
+# COMMON-NEXT:      RelocationOffset: 0x0
+# COMMON-NEXT:      RelocationCount: 0
+# ZEROFILL-NEXT:    Type: ZeroFill (0x1)
+# CODE-NEXT:        Type: Regular (0x0)
+# DEBUG-NEXT:       Type: Regular (0x0)
+# ZEROFILL-NEXT:    Attributes [ (0x0)
+# CODE-NEXT:        Attributes [ (0x800004)
+# CODE-NEXT:          PureInstructions (0x800000)
+# CODE-NEXT:          SomeInstructions (0x4)
+# DEBUG-NEXT:       Attributes [ (0x20000)
+# DEBUG-NEXT:         Debug (0x20000)
+# COMMON-NEXT:      ]
+# COMMON-NEXT:      Reserved1: 0x0
+# COMMON-NEXT:      Reserved2: 0x0
+# COMMON-NEXT:      Reserved3: 0x0
+# COMMON-NEXT:    }
+# COMMON-NEXT:    Section {
+# COMMON-NEXT:      Index: 1
+# COMMON-NEXT:      Name: __baz (5F 5F 62 61 7A 00 00 00 00 00 00 00 00 00 00 00)
+# COMMON-NEXT:      Segment: __FOO (5F 5F 46 4F 4F 00 00 00 00 00 00 00 00 00 00 00)
+# COMMON-NEXT:      Address: 0x1FFE
+# COMMON-NEXT:      Size: 0x2
+# COMMON-NEXT:      Offset: 4094
+# COMMON-NEXT:      Alignment: 0
+# COMMON-NEXT:      RelocationOffset: 0x0
+# COMMON-NEXT:      RelocationCount: 0
+# COMMON-NEXT:      Type: Regular (0x0)
+# COMMON-NEXT:      Attributes [ (0x0)
+# COMMON-NEXT:      ]
+# COMMON-NEXT:      Reserved1: 0x0
+# COMMON-NEXT:      Reserved2: 0x0
+# COMMON-NEXT:      Reserved3: 0x0
+# COMMON-NEXT:    }
+# COMMON-NEXT:  ]

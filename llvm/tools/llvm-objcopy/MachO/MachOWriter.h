@@ -19,7 +19,14 @@ class Error;
 namespace objcopy {
 namespace macho {
 
-class MachOWriter {
+class Writer {
+public:
+  virtual ~Writer() {}
+  virtual Error finalize() = 0;
+  virtual Error write() = 0;
+};
+
+class MachOWriter : public Writer {
   Object &O;
   bool Is64Bit;
   bool IsLittleEndian;
@@ -54,10 +61,25 @@ public:
               Buffer &B)
       : O(O), Is64Bit(Is64Bit), IsLittleEndian(IsLittleEndian),
         PageSize(PageSize), B(B), LayoutBuilder(O, Is64Bit, PageSize) {}
-
+  ~MachOWriter() {}
   size_t totalSize() const;
-  Error finalize();
-  Error write();
+  Error finalize() override;
+  Error write() override;
+};
+
+class BinaryWriter : public Writer {
+  Object &O;
+  Buffer &B;
+  MachOLayoutBuilder LayoutBuilder;
+  std::vector<Section *> OrderedSections;
+
+public:
+  BinaryWriter(Object &O, bool Is64Bit, bool IsLittleEndian, uint64_t PageSize,
+               Buffer &B)
+      : O(O), B(B), LayoutBuilder(O, Is64Bit, PageSize) {}
+  ~BinaryWriter() {}
+  Error finalize() override;
+  Error write() override;
 };
 
 } // end namespace macho

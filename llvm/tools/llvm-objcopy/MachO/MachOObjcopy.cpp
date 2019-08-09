@@ -119,6 +119,18 @@ static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
                            SecName.str().c_str());
 }
 
+static uint32_t getNewSectionFlags(const SectionFlag &SF) {
+  if ((SF & SecCode) != 0)
+    return MachO::S_REGULAR | MachO::S_ATTR_PURE_INSTRUCTIONS |
+           MachO::S_ATTR_SOME_INSTRUCTIONS;
+  else if ((SF & SecAlloc) != 0 && (SF & SecLoad) == 0)
+    return MachO::S_ZEROFILL;
+  else if ((SF & SecDebug) != 0)
+    return MachO::S_ATTR_DEBUG;
+  else
+    return MachO::S_REGULAR;
+}
+
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
@@ -129,14 +141,13 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.SymbolsToWeaken.empty() || !Config.SymbolsToKeepGlobal.empty() ||
       !Config.SectionsToRename.empty() || !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
-      !Config.SetSectionAlignment.empty() || !Config.SetSectionFlags.empty() ||
-      Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
-      Config.PreserveDates || Config.StripAllGNU || Config.StripDWO ||
-      Config.StripNonAlloc || Config.StripSections || Config.Weaken ||
-      Config.DecompressDebugSections || Config.StripDebug ||
-      Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded ||
-      Config.DiscardMode != DiscardType::None || !Config.SymbolsToAdd.empty() ||
-      Config.EntryExpr) {
+      !Config.SetSectionAlignment.empty() || Config.ExtractDWO ||
+      Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
+      Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
+      Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
+      Config.StripDebug || Config.StripNonAlloc || Config.StripSections ||
+      Config.StripUnneeded || Config.DiscardMode != DiscardType::None ||
+      !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");
   }
@@ -148,6 +159,14 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     markSymbols(Config, Obj);
 
   removeSymbols(Config, Obj);
+
+  if (!Config.SetSectionFlags.empty())
+    for (LoadCommand &LC : Obj.LoadCommands)
+      for (Section &Sec : LC.Sections) {
+        const auto Iter = Config.SetSectionFlags.find(Sec.CanonicalName);
+        if (Iter != Config.SetSectionFlags.end())
+          Sec.Flags = getNewSectionFlags(Iter->second.NewFlags);
+      }
 
   for (const auto &Flag : Config.AddSection) {
     std::pair<StringRef, StringRef> SecPair = Flag.split("=");

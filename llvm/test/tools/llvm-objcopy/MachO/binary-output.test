@@ -1,0 +1,64 @@
+## Show that llvm-objcopy extracts section contents in MachO properly, that is:
+##
+##   - Remove gap before the first section: __bar section content is at the
+##     beginning of the output.
+##   - Preserve gaps between sections: 12 bytes padding (zeroes) before __foo
+##     section content.
+##
+# RUN: yaml2obj %s > %t
+# RUN: llvm-objcopy -Obinary %t %t.bin
+# RUN: od -t x1 %t.bin | FileCheck %s
+
+# CHECK:      0000000    aa  bb  cc  dd  00  00  00  00  00  00  00  00  00  00  00  00
+# CHECK-NEXT: 0000020    ee  ff
+# CHECK-NEXT: 0000022{{$}}
+
+--- !mach-o
+FileHeader:
+  magic:           0xFEEDFACF
+  cputype:         0x01000007
+  cpusubtype:      0x80000003
+  filetype:        0x00000002
+  ncmds:           1
+  sizeofcmds:      232
+  flags:           0x00002000
+  reserved:        0x00000000
+LoadCommands:
+  - cmd:             LC_SEGMENT_64
+    cmdsize:         232
+    segname:         '__DATA'
+    vmaddr:          0x0000000000001000
+    vmsize:          32
+    fileoff:         472
+    filesize:        6
+    maxprot:         7
+    initprot:        7
+    nsects:          2
+    flags:           0
+    Sections:
+      - sectname:        __bar
+        segname:         __DATA
+        addr:            0x0000000000001000
+        content:         'AABBCCDD'
+        size:            4
+        offset:          0x0000010c
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x00000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000
+      - sectname:        __foo
+        segname:         __DATA
+        addr:            0x0000000000001010
+        size:            2
+        content:         'EEFF'
+        offset:          0x00000110
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x00000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000

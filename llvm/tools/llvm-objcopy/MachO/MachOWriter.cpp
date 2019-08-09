@@ -495,6 +495,47 @@ Error MachOWriter::write() {
   return B.commit();
 }
 
+Error BinaryWriter::finalize() {
+  if (Error E = LayoutBuilder.layout())
+    return E;
+
+  // Sort sections by their addresses.
+  for (LoadCommand &LC : O.LoadCommands)
+    for (Section &Sec : LC.Sections)
+      if (!Sec.isVirtualSection())
+        OrderedSections.push_back(&Sec);
+
+  llvm::stable_sort(OrderedSections, [](const Section *A, const Section *B) {
+    return A->Addr < B->Addr;
+  });
+
+  // Remove gap at the start. `Addr` is used as the file offset in the
+  // output file.
+  if (!OrderedSections.empty()) {
+    uint64_t AddrBase = OrderedSections[0]->Addr;
+    for (Section *Sec : OrderedSections)
+      Sec->Addr -= AddrBase;
+  }
+
+  return Error::success();
+}
+
+Error BinaryWriter::write() {
+  size_t TotalSize =
+      OrderedSections.empty()
+          ? 0
+          : (OrderedSections.back()->Addr + OrderedSections.back()->Size);
+
+  if (Error E = B.allocate(TotalSize))
+    return E;
+  memset(B.getBufferStart(), 0, TotalSize);
+
+  for (const Section *Sec : OrderedSections)
+    memcpy(B.getBufferStart() + Sec->Addr, Sec->getContent().data(), Sec->Size);
+
+  return B.commit();
+}
+
 } // end namespace macho
 } // end namespace objcopy
 } // end namespace llvm

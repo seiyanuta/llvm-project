@@ -198,15 +198,30 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   return Error::success();
 }
 
-Error writeOutput(Object &O, Buffer &Out, bool Is64Bit, bool IsLittleEndian) {
+static std::unique_ptr<Writer> createWriter(const CopyConfig &Config, Object &O,
+                                            Buffer &Out, bool Is64Bit,
+                                            bool IsLittleEndian) {
   // TODO: Support 16KB pages which are employed in iOS arm64 binaries:
   //       https://github.com/llvm/llvm-project/commit/1bebb2832ee312d3b0316dacff457a7a29435edb
   const uint64_t PageSize = 4096;
 
-  MachOWriter Writer(O, Is64Bit, IsLittleEndian, PageSize, Out);
-  if (auto E = Writer.finalize())
+  switch (Config.OutputFormat) {
+  case FileFormat::Binary:
+    return std::make_unique<BinaryWriter>(
+        BinaryWriter(O, Is64Bit, IsLittleEndian, PageSize, Out));
+  default:
+    return std::make_unique<MachOWriter>(
+        MachOWriter(O, Is64Bit, IsLittleEndian, PageSize, Out));
+  }
+}
+
+Error writeOutput(const CopyConfig &Config, Object &O, Buffer &Out,
+                  bool Is64Bit, bool IsLittleEndian) {
+  std::unique_ptr<Writer> W =
+      createWriter(Config, O, Out, Is64Bit, IsLittleEndian);
+  if (auto E = W->finalize())
     return E;
-  return Writer.write();
+  return W->write();
 }
 
 Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
@@ -218,7 +233,7 @@ Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  return writeOutput(*O, Out, MI.Is64Bit, MI.IsLittleEndian);
+  return writeOutput(Config, *O, Out, MI.Is64Bit, MI.IsLittleEndian);
 }
 
 Error executeObjcopyOnBinary(const CopyConfig &Config,
@@ -234,7 +249,7 @@ Error executeObjcopyOnBinary(const CopyConfig &Config,
   if (Error E = handleArgs(Config, *O))
     return createFileError(Config.InputFilename, std::move(E));
 
-  return writeOutput(*O, Out, In.is64Bit(), In.isLittleEndian());
+  return writeOutput(Config, *O, Out, In.is64Bit(), In.isLittleEndian());
 }
 
 } // end namespace macho

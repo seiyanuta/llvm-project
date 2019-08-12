@@ -10,8 +10,8 @@
 # RUN: llvm-objdump -d --no-show-raw-insn --color %t | tr -d '\033' \
 # RUN:   | FileCheck %s --check-prefix=ENABLED
 
-# DISABLED:      301: movl 249(%rip), %edx
-# ENABLED:       301: movl 249([0;36m%rip[0m)[0m, [0;36m%edx[0m
+# DISABLED:      301: movl 249(%rip), %edx        # 0000000000000400 <a>
+# ENABLED:       301: movl 249([0;36m%rip[0m)[0m, [0;36m%edx[0m[0;1;33m        #  0000000000000400 <a>[0m
 # DISABLED-NEXT: 307: callq -12 <foo>
 # ENABLED-NEXT:  307: callq -12[0;1;33m <foo>[0m
 # DISABLED-NEXT: 30c: movl $0, %eax
@@ -47,3 +47,9 @@ Symbols:
     Binding:         STB_GLOBAL
     Value:           0x0000000000000301
     Size:            0x0000000000000011
+  - Name:            a
+    Type:            STT_OBJECT
+    Section:         .data
+    Binding:         STB_GLOBAL
+    Value:           0x0000000000000400
+    Size:            0x0000000000000004

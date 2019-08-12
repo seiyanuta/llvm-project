@@ -352,6 +352,7 @@ enum class ObjdumpColor {
   Register,
   SymbolName,
   Memory,
+  Constant,
 };
 
 // TODO: Make this configurable (just like $LS_COLORS).
@@ -363,6 +364,7 @@ static const std::map<ObjdumpColor, std::pair<raw_ostream::Colors, bool>>
         {ObjdumpColor::Register, {raw_ostream::CYAN, false}},
         {ObjdumpColor::SymbolName, {raw_ostream::YELLOW, true}},
         {ObjdumpColor::Memory, {raw_ostream::SAVEDCOLOR, false}},
+        {ObjdumpColor::Constant, {raw_ostream::RED, true}},
 };
 
 /// a context for WithNestedColor which holds saved colors.
@@ -1662,6 +1664,7 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
         if (Disassembled) {
           Optional<uint64_t> Target = MIA->evaluateMemoryOperandAddress(Inst, SectionAddr + Index, Size);
           if (Target) {
+            // Print symbol names referenced by memory operands.
             for (const auto &SymSec : AllSymbols) {
               auto TargetSym = llvm::partition_point(SymSec.second, [=](const std::tuple<uint64_t, StringRef, uint8_t> &T) {
                 return std::get<0>(T) < *Target;
@@ -1680,6 +1683,42 @@ static void disassembleObject(const Target *TheTarget, const ObjectFile *Obj,
                      << format(Is64Bits ? "%016" PRIx64 " " : "%08" PRIx64 " ", SymAddr)
                      << " <"  << SymName << ">";
               break;
+            }
+
+            // Print null-terminated ASCII strings referenced by memory operands.
+            for (const auto &Sec : Obj->sections()) {
+              auto Start = Sec.getAddress();
+              auto End = Start + Sec.getSize();
+              if (Sec.isData() && Start <= *Target < End) {
+                Expected<StringRef> ContentOrError = Sec.getContents();
+                if (!ContentOrError) {
+                  // TODO:
+                  break;
+                }
+
+                auto Content = *ContentOrError;
+                auto Offset = *Target - Start;
+                if (Offset < Content.size()) {
+                  const char *Str = Content.data() + Offset;
+                  size_t N = 0;
+                  size_t MaxLen = 32;
+                  while (N < Content.size() && N <= MaxLen && isPrint(Str[N]))
+                    N++;
+
+                  if (N == 0 || N == Content.size() || N > MaxLen)
+                    break; // It is not a null-terminated string.
+
+                  auto ShortenedStr = StringRef(Str, N);
+                  WithColor Highlight =
+                    withHighlightColor(ObjdumpColor::Constant);
+                  Highlight << "        # \"";
+                  outs().write_escaped(ShortenedStr);
+                  if (N == MaxLen)
+                    Highlight << "...";
+                  Highlight << "\"";
+                  break;
+                }
+              }
             }
           }
         }

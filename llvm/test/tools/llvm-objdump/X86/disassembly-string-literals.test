@@ -1,0 +1,32 @@
+## Show that when disassembling, llvm-objdump prints and ASCII strings in
+## .rodata.
+
+## This test expects ANSI escape sequences.
+# UNSUPPORTED: system-windows
+# REQUIRES: shell
+
+# RUN: yaml2obj %s > %t
+# RUN: llvm-objdump -d --no-show-raw-insn --color=false %t | FileCheck %s
+# RUN: llvm-objdump -d --no-show-raw-insn --color %t | tr -d '\033' \
+# RUN:   | FileCheck %s --check-prefix=HIGHLIGHTED
+
+# CHECK:        300: leaq 249(%rip), %rdi        # "Hello World!"
+# HIGHLIGHTED:  300: leaq 249([0;36m%rip[0m), [0;36m%rdi[0m[0;1;31m # "Hello World!"[0m
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+Sections:
+  - Name:    .text
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_ALLOC, SHF_EXECINSTR]
+    Address: 0x300
+    Content: '488d3df9000000c3'
+  - Name:    .rodata
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_ALLOC]
+    Address: 0x400
+    Content: '48656C6C6F20576F726C642100'

@@ -139,7 +139,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.NewSymbolVisibility || !Config.SymbolsToGlobalize.empty() ||
       !Config.SymbolsToKeep.empty() || !Config.SymbolsToLocalize.empty() ||
       !Config.SymbolsToWeaken.empty() || !Config.SymbolsToKeepGlobal.empty() ||
-      !Config.SectionsToRename.empty() || !Config.SymbolsToRename.empty() ||
+      !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
       !Config.SetSectionAlignment.empty() || Config.ExtractDWO ||
       Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
@@ -159,6 +159,22 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     markSymbols(Config, Obj);
 
   removeSymbols(Config, Obj);
+
+  if (!Config.SectionsToRename.empty()) {
+    for (LoadCommand &LC : Obj.LoadCommands)
+      for (Section &Sec : LC.Sections) {
+        const auto Iter = Config.SectionsToRename.find(Sec.CanonicalName);
+        if (Iter != Config.SectionsToRename.end()) {
+          const SectionRename &SR = Iter->second;
+          std::pair<StringRef, StringRef> NamePair = SR.NewName.split(',');
+          Sec.CanonicalName = SR.NewName;
+          Sec.Segname = NamePair.first;
+          Sec.Sectname = NamePair.second;
+          if (SR.NewFlags)
+            Sec.Flags = getNewSectionFlags(*SR.NewFlags);
+        }
+      }
+  }
 
   if (!Config.SetSectionFlags.empty())
     for (LoadCommand &LC : Obj.LoadCommands)

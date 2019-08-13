@@ -145,9 +145,22 @@ static Expected<SectionRename> parseRenameSectionValue(StringRef FlagValue) {
   Old2New.second.split(NameAndFlags, ',');
   SR.NewName = NameAndFlags[0];
 
+  // If the original name contains ',', handle the new name as a MachO section
+  // name formatted as: "<segment name>,<section name>".
+  //
+  // FIXME: What if the input file is an ELF, and the original name
+  //        contains ',' ?
+  ArrayRef<StringRef> Flags;
+  if (SR.OriginalName.contains(',')) {
+    SR.NewName = StringRef(NameAndFlags[0].data(),
+                           NameAndFlags[0].size() + 1 + NameAndFlags[1].size());
+    Flags = makeArrayRef(NameAndFlags).drop_front(2);
+  } else {
+    Flags = makeArrayRef(NameAndFlags).drop_front();
+  }
+
   if (NameAndFlags.size() > 1) {
-    Expected<SectionFlag> ParsedFlagSet =
-        parseSectionFlagSet(makeArrayRef(NameAndFlags).drop_front());
+    Expected<SectionFlag> ParsedFlagSet = parseSectionFlagSet(Flags);
     if (!ParsedFlagSet)
       return ParsedFlagSet.takeError();
     SR.NewFlags = *ParsedFlagSet;

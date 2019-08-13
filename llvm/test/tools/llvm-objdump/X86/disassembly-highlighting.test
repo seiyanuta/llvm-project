@@ -5,17 +5,19 @@
 # UNSUPPORTED: system-windows
 # REQUIRES: shell
 
-# RUN: yaml2obj %s > %t
-# RUN: llvm-objdump -d --no-show-raw-insn --color=false %t | FileCheck %s --check-prefix=DISABLED
-# RUN: llvm-objdump -d --no-show-raw-insn --color %t | tr -d '\033' \
-# RUN:   | FileCheck %s --check-prefix=ENABLED
+## Case 1: An executable file. Make sure that symbols, registers, immediate
+##         values are highlighted.
+# RUN: yaml2obj --docnum=1 %s > %t1
+# RUN: llvm-objdump -d --no-show-raw-insn --color=false %t1 | FileCheck %s --check-prefix=EXEC-DISABLED
+# RUN: llvm-objdump -d --no-show-raw-insn --color %t1 | tr -d '\033' \
+# RUN:   | FileCheck %s --check-prefix=EXEC-ENABLED
 
-# DISABLED:      301: movl 249(%rip), %edx        # 0000000000000400 <a>
-# ENABLED:       301: movl 249([0;36m%rip[0m), [0;36m%edx[0m[0;1;33m        #  0000000000000400 <a>[0m
-# DISABLED-NEXT: 307: callq -12 <foo>
-# ENABLED-NEXT:  307: callq -12[0;1;33m <foo>[0m
-# DISABLED-NEXT: 30c: movl $0, %eax
-# ENABLED-NEXT:  30c: movl [0;31m$0[0m, [0;36m%eax[0m
+# EXEC-DISABLED:      301: movl 249(%rip), %edx        # 0000000000000400 <a>
+# EXEC-ENABLED:       301: movl 249([0;36m%rip[0m), [0;36m%edx[0m[0;1;33m        #  0000000000000400 <a>[0m
+# EXEC-DISABLED-NEXT: 307: callq -12 <foo>
+# EXEC-ENABLED-NEXT:  307: callq -12[0;1;33m <foo>[0m
+# EXEC-DISABLED-NEXT: 30c: movl $0, %eax
+# EXEC-ENABLED-NEXT:  30c: movl [0;31m$0[0m, [0;36m%eax[0m
 
 --- !ELF
 FileHeader:
@@ -53,3 +55,37 @@ Symbols:
     Binding:         STB_GLOBAL
     Value:           0x0000000000000400
     Size:            0x0000000000000004
+
+## Case 2: A relocatable file. Make sure the relocations are highlighted.
+# RUN: yaml2obj --docnum=2 %s > %t2
+# RUN: llvm-objdump -d --no-show-raw-insn -r --color=false %t2 | FileCheck %s --check-prefix=RELOC-DISABLED
+# RUN: llvm-objdump -d --no-show-raw-insn -r --color %t2 | tr -d '\033' \
+# RUN:   | FileCheck %s --check-prefix=RELOC-ENABLED
+
+# RELOC-DISABLED:      0: callq   0 <.text+0x5>
+# RELOC-DISABLED-NEXT: 0000000000000001:  R_X86_64_PC32        foo
+# RELOC-ENABLED:       0: callq   0[0;1;33m <.text+0x5>[0m
+# RELOC-ENABLED-NEXT:  [0;1;35m 0000000000000001:  R_X86_64_PC32        foo
+# RELOC-ENABLED-NEXT:  [0m
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_REL
+  Machine: EM_X86_64
+Sections:
+  - Name:    .text
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_ALLOC, SHF_EXECINSTR]
+    Content: 'e800000000'
+  - Name:    .rela.text
+    Type:    SHT_RELA
+    Info:    .text
+    Relocations:
+      - Offset: 1
+        Symbol: foo
+        Type:   R_X86_64_PC32
+        Addend: 0
+Symbols:
+  - Name: foo

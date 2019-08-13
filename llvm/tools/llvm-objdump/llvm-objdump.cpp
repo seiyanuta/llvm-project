@@ -353,6 +353,7 @@ enum class ObjdumpColor {
   SymbolName,
   Memory,
   Constant,
+  Relocation,
 };
 
 // TODO: Make this configurable (just like $LS_COLORS).
@@ -365,6 +366,7 @@ static const std::map<ObjdumpColor, std::pair<raw_ostream::Colors, bool>>
         {ObjdumpColor::SymbolName, {raw_ostream::YELLOW, true}},
         {ObjdumpColor::Memory, {raw_ostream::SAVEDCOLOR, false}},
         {ObjdumpColor::Constant, {raw_ostream::RED, true}},
+        {ObjdumpColor::Relocation, {raw_ostream::MAGENTA, true}},
 };
 
 /// a context for WithNestedColor which holds saved colors.
@@ -792,7 +794,8 @@ static void printRelocation(const RelocationRef &Rel, uint64_t Address,
   SmallString<32> Val;
   Rel.getTypeName(Name);
   error(getRelocationValueString(Rel, Val));
-  outs() << format(Fmt.data(), Address) << Name << "\t" << Val << "\n";
+  withHighlightColor(ObjdumpColor::Relocation)
+      << format(Fmt.data(), Address) << Name << "\t" << Val << "\n";
 }
 
 class PrettyPrinter {

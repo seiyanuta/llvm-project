@@ -1,0 +1,64 @@
+## Show that llvm-objcopy supports renamining segment/section names in MachO
+## files through --rename-section.
+# RUN: yaml2obj %s > %t
+
+# RUN: not llvm-objcopy --rename-section __bar=__new_bar %t %t2 2>&1 \
+# RUN:   | FileCheck %s -DINPUT=%t --check-prefix=BAD-SECTION-NAME
+# BAD-SECTION-NAME: error: '[[INPUT]]': invalid section name '__bar' (should be formatted as '<segment name>,<section name>')
+
+# RUN: not llvm-objcopy --rename-section __FOO,__bar=__TOOOOOOOOOO_LONG,__new_bar %t %t2 2>&1 \
+# RUN:   | FileCheck %s -DINPUT=%t --check-prefix=TOO-LONG-SEGMENT-NAME
+# TOO-LONG-SEGMENT-NAME: error: '[[INPUT]]': too long segment name: '__TOOOOOOOOOO_LONG'
+
+# RUN: not llvm-objcopy --rename-section __FOO,__bar=__FOO,__tooooooooo_long %t %t3 2>&1 \
+# RUN:   | FileCheck %s -DINPUT=%t --check-prefix=TOO-LONG-SECTION-NAME
+# TOO-LONG-SECTION-NAME: error: '[[INPUT]]': too long section name: '__tooooooooo_long'
+
+## Rename without section flags.
+# RUN: llvm-objcopy --rename-section __FOO,__bar=__FOO,__new_bar %t %t4
+# RUN: llvm-readobj --sections %t4 | FileCheck %s --check-prefix=RENAME-SECTION
+# RENAME-SECTION-NOT: Name: __bar
+# RENAME-SECTION: Name: __new_bar
+
+## Rename with section flags.
+# RUN: llvm-objcopy --rename-section __FOO,__bar=__TEXT,__new_bar,debug %t %t5
+# RUN: llvm-readobj --sections %t4 | FileCheck %s --check-prefix=RENAME-SECTION-WITH-FLAGS
+# RENAME-SECTION-WITH-FLAGS-NOT: Name: __bar
+# RENAME-SECTION-WITH-FLAGS: Name: __new_bar
+
+--- !mach-o
+FileHeader:
+  magic:           0xFEEDFACF
+  cputype:         0x01000007
+  cpusubtype:      0x80000003
+  filetype:        0x00000002
+  ncmds:           1
+  sizeofcmds:      152
+  flags:           0x00002000
+  reserved:        0x00000000
+LoadCommands:
+  - cmd:             LC_SEGMENT_64
+    cmdsize:         152
+    segname:         '__FOO'
+    vmaddr:          0x0000000000001000
+    vmsize:          4096
+    fileoff:         0
+    filesize:        4096
+    maxprot:         7
+    initprot:        7
+    nsects:          1
+    flags:           0
+    Sections:
+      - sectname:        __bar
+        segname:         __FOO
+        addr:            0x0000000000001ffc
+        content:         'AABBCCDD'
+        size:            4
+        offset:          0x0000010c
+        align:           0
+        reloff:          0x00000000
+        nreloc:          0
+        flags:           0x00000000
+        reserved1:       0x00000000
+        reserved2:       0x00000000
+        reserved3:       0x00000000

@@ -153,6 +153,14 @@ static Error validateOptions(const CopyConfig &Config) {
         return E;
   }
 
+  if (!Config.SectionsToRename.empty())
+    for (const StringMapEntry<SectionRename> &SR : Config.SectionsToRename) {
+      if (Error E = isValidMachOCannonicalName(SR.second.OriginalName))
+        return E;
+      if (Error E = isValidMachOCannonicalName(SR.second.NewName))
+        return E;
+    }
+
   return Error::success();
 }
 
@@ -163,8 +171,7 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       !Config.AllocSectionsPrefix.empty() || !Config.KeepSection.empty() ||
       !Config.SymbolsToGlobalize.empty() || !Config.SymbolsToKeep.empty() ||
       !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
-      !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
-      !Config.SymbolsToRename.empty() ||
+      !Config.SymbolsToKeepGlobal.empty() || !Config.SymbolsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() || Config.ExtractDWO ||
       Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
       Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
@@ -186,6 +193,22 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     markSymbols(Config, Obj);
 
   removeSymbols(Config, Obj);
+
+  if (!Config.SectionsToRename.empty()) {
+    for (LoadCommand &LC : Obj.LoadCommands)
+      for (Section &Sec : LC.Sections) {
+        const auto Iter = Config.SectionsToRename.find(Sec.CannonicalName);
+        if (Iter != Config.SectionsToRename.end()) {
+          const SectionRename &SR = Iter->second;
+          std::pair<StringRef, StringRef> NamePair = SR.NewName.split(',');
+          Sec.CannonicalName = SR.NewName;
+          Sec.Segname = NamePair.first;
+          Sec.Sectname = NamePair.second;
+          if (SR.NewFlags)
+            Sec.Flags = getNewSectionFlags(*SR.NewFlags);
+        }
+      }
+  }
 
   if (!Config.SetSectionFlags.empty())
     for (LoadCommand &LC : Obj.LoadCommands)

@@ -155,6 +155,9 @@ static Error executeObjcopyOnRawBinary(CopyConfig &Config, MemoryBuffer &In,
     if (Error E = Config.parseELFConfig())
       return E;
     return elf::executeObjcopyOnRawBinary(Config, In, Out);
+  case FileFormat::MachO:
+    return createStringError(object_error::invalid_file_type,
+                             "unsupported output format");
   }
 
   llvm_unreachable("unsupported output format");

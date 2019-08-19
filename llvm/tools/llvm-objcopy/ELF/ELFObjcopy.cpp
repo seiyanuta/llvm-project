@@ -271,8 +271,8 @@ static Error splitDWOToFile(const CopyConfig &Config, const Reader &Reader,
                                         OnlyKeepDWOPred))
     return E;
   if (Config.OutputArch) {
-    DWOFile->Machine = Config.OutputArch.getValue().EMachine;
-    DWOFile->OSABI = Config.OutputArch.getValue().OSABI;
+    DWOFile->Machine = Config.OutputArch.getValue().ELF.EMachine;
+    DWOFile->OSABI = Config.OutputArch.getValue().ELF.OSABI;
   }
   FileBuffer FB(File);
   auto Writer = createWriter(Config, *DWOFile, FB, OutputElfType);
@@ -599,8 +599,8 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
       return E;
 
   if (Config.OutputArch) {
-    Obj.Machine = Config.OutputArch.getValue().EMachine;
-    Obj.OSABI = Config.OutputArch.getValue().OSABI;
+    Obj.Machine = Config.OutputArch.getValue().ELF.EMachine;
+    Obj.OSABI = Config.OutputArch.getValue().ELF.OSABI;
   }
 
   // It is important to remove the sections first. For example, we want to

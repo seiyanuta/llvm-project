@@ -16,6 +16,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Object/ELFTypes.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Error.h"
@@ -31,23 +32,44 @@ namespace objcopy {
 enum class FileFormat {
   Unspecified,
   ELF,
+  MachO,
   Binary,
   IHex,
 };
 
-// This type keeps track of the machine info for various architectures. This
-// lets us map architecture names to ELF types and the e_machine value of the
-// ELF file.
-struct MachineInfo {
-  MachineInfo(uint16_t EM, uint8_t ABI, bool Is64, bool IsLittle)
-      : EMachine(EM), OSABI(ABI), Is64Bit(Is64), IsLittleEndian(IsLittle) {}
-  // Alternative constructor that defaults to NONE for OSABI.
-  MachineInfo(uint16_t EM, bool Is64, bool IsLittle)
-      : MachineInfo(EM, ELF::ELFOSABI_NONE, Is64, IsLittle) {}
-  // Default constructor for unset fields.
-  MachineInfo() : MachineInfo(0, 0, false, false) {}
+struct ELFMachineInfo {
   uint16_t EMachine;
   uint8_t OSABI;
+};
+
+struct MachOMachineInfo {
+  MachO::CPUType MachOCPUType;
+  uint32_t MachOCPUSubType;
+};
+
+// This type keeps track of the machine info for various architectures. This
+// lets us map architecture names to format-specific values.
+struct MachineInfo {
+  // For ELF targets.
+  MachineInfo(uint16_t EM, uint8_t ABI, bool Is64, bool IsLittle)
+      : ELF({EM, ABI}), MachO({MachO::CPU_TYPE_ANY, 0}), Is64Bit(Is64),
+        IsLittleEndian(IsLittle) {}
+  // For MachO targets.
+  MachineInfo(MachO::CPUType MachOCPUType, uint32_t MachOCPUSubType, bool Is64,
+              bool IsLittle)
+      : ELF({0, 0}), MachO({MachOCPUType, MachOCPUSubType}), Is64Bit(Is64),
+        IsLittleEndian(IsLittle) {}
+  MachineInfo(ELFMachineInfo ELF, MachOMachineInfo MachO, bool Is64,
+              bool IsLittle)
+      : ELF(ELF), MachO(MachO), Is64Bit(Is64), IsLittleEndian(IsLittle) {}
+  // Default constructor for unset fields.
+  MachineInfo()
+      : ELF({0, 0}), MachO({MachO::CPU_TYPE_ANY, 0}), Is64Bit(false),
+        IsLittleEndian(false) {}
+
+  ELFMachineInfo ELF;
+  MachOMachineInfo MachO;
+  // Common values.
   bool Is64Bit;
   bool IsLittleEndian;
 };

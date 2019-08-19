@@ -9,8 +9,11 @@
 #ifndef LLVM_TOOLS_OBJCOPY_MACHOOBJCOPY_H
 #define LLVM_TOOLS_OBJCOPY_MACHOOBJCOPY_H
 
+#include "llvm/Support/MemoryBuffer.h"
+
 namespace llvm {
 class Error;
+class MemoryBuffer;
 
 namespace object {
 class MachOObjectFile;
@@ -22,6 +25,8 @@ struct CopyConfig;
 class Buffer;
 
 namespace macho {
+Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
+                                Buffer &Out);
 Error executeObjcopyOnBinary(const CopyConfig &Config,
                              object::MachOObjectFile &In, Buffer &Out);
 } // end namespace macho

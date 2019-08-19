@@ -173,29 +173,35 @@ void MachOWriter::writeLoadCommands() {
     }
 
 #define HANDLE_LOAD_COMMAND(LCName, LCValue, LCStruct)                         \
-  case MachO::LCName:                                                          \
+  case MachO::LCName: {                                                        \
     assert(sizeof(MachO::LCStruct) + LC.Payload.size() ==                      \
            MLC.load_command_data.cmdsize);                                     \
     if (IsLittleEndian != sys::IsLittleEndianHost)                             \
       MachO::swapStruct(MLC.LCStruct##_data);                                  \
     memcpy(Begin, &MLC.LCStruct##_data, sizeof(MachO::LCStruct));              \
     Begin += sizeof(MachO::LCStruct);                                          \
-    memcpy(Begin, LC.Payload.data(), LC.Payload.size());                       \
+    /* Call memcpy only if it's not empty due to a nonnull attribute of */     \
+    /* memcpy's 2nd argument. */                                               \
+    if (LC.Payload.size() > 0)                                                 \
+      memcpy(Begin, LC.Payload.data(), LC.Payload.size());                     \
     Begin += LC.Payload.size();                                                \
-    break;
+    break;                                                                     \
+  }
 
     // Copy the load command as it is.
     switch (MLC.load_command_data.cmd) {
-    default:
+    default: {
       assert(sizeof(MachO::load_command) + LC.Payload.size() ==
              MLC.load_command_data.cmdsize);
       if (IsLittleEndian != sys::IsLittleEndianHost)
         MachO::swapStruct(MLC.load_command_data);
       memcpy(Begin, &MLC.load_command_data, sizeof(MachO::load_command));
       Begin += sizeof(MachO::load_command);
-      memcpy(Begin, LC.Payload.data(), LC.Payload.size());
+      if (LC.Payload.size() > 0)
+        memcpy(Begin, LC.Payload.data(), LC.Payload.size());
       Begin += LC.Payload.size();
       break;
+    }
 #include "llvm/BinaryFormat/MachO.def"
     }
   }

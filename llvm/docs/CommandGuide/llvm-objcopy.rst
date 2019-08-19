@@ -498,6 +498,7 @@ options. For GNU :program:`objcopy` compatibility, the values are all bfdnames.
 - `elf64-tradlittlemips`
 - `elf32-sparc`
 - `elf32-sparcel`
+- `mach-o-x86-64`
 
 Additionally, all targets except `binary` and `ihex` can have `-freebsd` as a
 suffix.

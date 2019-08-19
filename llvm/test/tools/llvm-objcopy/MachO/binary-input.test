@@ -1,0 +1,108 @@
+# Show that if -I binary is given, llvm-objcopy creates a Mach-O object which
+# contains the input file contents.
+
+RUN: not llvm-objcopy -Ibinary -B i386:x86-64 -Omach-o-x86-64 %t.nonexistent %t.o.nonexistent 2>&1 \
+RUN:   | FileCheck %s -DINPUT=%t.nonexistent --check-prefix=NONEXSITENT-FILE
+NONEXSITENT-FILE: error: '[[INPUT]]': {{[Nn]}}o such file or directory
+
+RUN: echo -n abcdefg > %t.input
+
+RUN: llvm-objcopy -Ibinary -B i386:x86-64 -Omach-o-x86-64 %t.input %t.x86-64.o
+RUN: llvm-objcopy -Ibinary -B aarch64 -Omach-o-arm64 %t.input %t.arm64.o
+RUN: llvm-readobj --sections --section-data --symbols --macho-segment --macho-dysymtab %t.x86-64.o \
+RUN:   | FileCheck %s --check-prefixes=COMMON,X86-64
+RUN: llvm-readobj --sections --section-data --symbols --macho-segment --macho-dysymtab %t.arm64.o \
+RUN:   | FileCheck %s --check-prefixes=COMMON,ARM64
+
+X86-64:       Format: Mach-O 64-bit x86-64
+X86-64-NEXT:  Arch: x86_64
+ARM64:        Format: Mach-O arm64
+ARM64-NEXT:   Arch: aarch64
+COMMON-NEXT:  AddressSize: 64bit
+COMMON-NEXT:  Sections [
+COMMON-NEXT:    Section {
+COMMON-NEXT:      Index: 0
+COMMON-NEXT:      Name: __data (5F 5F 64 61 74 61 00 00 00 00 00 00 00 00 00 00)
+COMMON-NEXT:      Segment: __DATA (5F 5F 44 41 54 41 00 00 00 00 00 00 00 00 00 00)
+COMMON-NEXT:      Address: 0x0
+COMMON-NEXT:      Size: 0x7
+COMMON-NEXT:      Offset: 288
+COMMON-NEXT:      Alignment: 0
+COMMON-NEXT:      RelocationOffset: 0x0
+COMMON-NEXT:      RelocationCount: 0
+COMMON-NEXT:      Type: Regular (0x0)
+COMMON-NEXT:      Attributes [ (0x0)
+COMMON-NEXT:      ]
+COMMON-NEXT:      Reserved1: 0x0
+COMMON-NEXT:      Reserved2: 0x0
+COMMON-NEXT:      Reserved3: 0x0
+COMMON-NEXT:      SectionData (
+COMMON-NEXT:        0000: 61626364 656667 |abcdefg|
+COMMON-NEXT:      )
+COMMON-NEXT:    }
+COMMON-NEXT:  ]
+COMMON-NEXT:  Symbols [
+COMMON-NEXT:    Symbol {
+COMMON-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_input_size
+COMMON-NEXT:      Extern
+COMMON-NEXT:      Type: Abs (0x2)
+COMMON-NEXT:      Section: (0x0)
+COMMON-NEXT:      RefType: ReferenceFlagDefined (0x2)
+COMMON-NEXT:      Flags [ (0x0)
+COMMON-NEXT:      ]
+COMMON-NEXT:      Value: 0x7
+COMMON-NEXT:    }
+COMMON-NEXT:    Symbol {
+COMMON-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_input_start
+COMMON-NEXT:      Extern
+COMMON-NEXT:      Type: Section (0xE)
+COMMON-NEXT:      Section: __data (0x1)
+COMMON-NEXT:      RefType: ReferenceFlagDefined (0x2)
+COMMON-NEXT:      Flags [ (0x0)
+COMMON-NEXT:      ]
+COMMON-NEXT:      Value: 0x0
+COMMON-NEXT:    }
+COMMON-NEXT:    Symbol {
+COMMON-NEXT:      Name: __binary_{{[_a-zA-Z0-9]*}}_input_end
+COMMON-NEXT:      Extern
+COMMON-NEXT:      Type: Section (0xE)
+COMMON-NEXT:      Section: __data (0x1)
+COMMON-NEXT:      RefType: ReferenceFlagDefined (0x2)
+COMMON-NEXT:      Flags [ (0x0)
+COMMON-NEXT:      ]
+COMMON-NEXT:      Value: 0x7
+COMMON-NEXT:    }
+COMMON-NEXT:  ]
+COMMON-NEXT:  Segment {
+COMMON-NEXT:    Cmd: LC_SEGMENT_64
+COMMON-NEXT:    Name:
+COMMON-NEXT:    Size: 152
+COMMON-NEXT:    vmaddr: 0x0
+COMMON-NEXT:    vmsize: 0x7
+COMMON-NEXT:    fileoff: 288
+COMMON-NEXT:    filesize: 7
+COMMON-NEXT:    maxprot: rwx
+COMMON-NEXT:    initprot: rwx
+COMMON-NEXT:    nsects: 1
+COMMON-NEXT:    flags: 0x0
+COMMON-NEXT:  }
+COMMON-NEXT:  Dysymtab {
+COMMON-NEXT:    ilocalsym: 0
+COMMON-NEXT:    nlocalsym: 0
+COMMON-NEXT:    iextdefsym: 0
+COMMON-NEXT:    nextdefsym: 3
+COMMON-NEXT:    iundefsym: 3
+COMMON-NEXT:    nundefsym: 0
+COMMON-NEXT:    tocoff: 0
+COMMON-NEXT:    ntoc: 0
+COMMON-NEXT:    modtaboff: 0
+COMMON-NEXT:    nmodtab: 0
+COMMON-NEXT:    extrefsymoff: 0
+COMMON-NEXT:    nextrefsyms: 0
+COMMON-NEXT:    indirectsymoff: 0
+COMMON-NEXT:    nindirectsyms: 0
+COMMON-NEXT:    extreloff: 0
+COMMON-NEXT:    nextrel: 0
+COMMON-NEXT:    locreloff: 0
+COMMON-NEXT:    nlocrel: 0
+COMMON-NEXT:  }

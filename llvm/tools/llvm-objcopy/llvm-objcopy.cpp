@@ -145,6 +145,8 @@ static Error executeObjcopyOnIHex(CopyConfig &Config, MemoryBuffer &In,
 static Error executeObjcopyOnRawBinary(CopyConfig &Config, MemoryBuffer &In,
                                        Buffer &Out) {
   switch (Config.OutputFormat) {
+  case FileFormat::MachO:
+    return macho::executeObjcopyOnRawBinary(Config, In, Out);
   case FileFormat::ELF:
   // FIXME: Currently, we call elf::executeObjcopyOnRawBinary even if the
   // output format is binary/ihex or it's not given. This behavior differs from
@@ -155,9 +157,6 @@ static Error executeObjcopyOnRawBinary(CopyConfig &Config, MemoryBuffer &In,
     if (Error E = Config.parseELFConfig())
       return E;
     return elf::executeObjcopyOnRawBinary(Config, In, Out);
-  case FileFormat::MachO:
-    return createStringError(object_error::invalid_file_type,
-                             "unsupported output format");
   }
 
   llvm_unreachable("unsupported output format");

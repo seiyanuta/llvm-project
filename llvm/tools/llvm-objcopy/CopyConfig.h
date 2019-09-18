@@ -114,7 +114,7 @@ public:
 
 // Configuration for copying/stripping a single file.
 struct CopyConfig {
-  // Format-specific options.
+  // Format-specific options to be initialized lazily when needed.
   Optional<elf::ELFCopyConfig> ELF;
 
   // Main input/output options

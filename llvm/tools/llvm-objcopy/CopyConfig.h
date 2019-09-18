@@ -190,6 +190,8 @@ struct CopyConfig {
   bool DecompressDebugSections = false;
   DebugCompressionType CompressionType = DebugCompressionType::None;
 
+  // parseELFConfig performs ELF-specific command-line parsing. Fills `ELF` on
+  // success or returns an Error otherwise.
   Error parseELFConfig() {
     if (!ELF) {
       Expected<elf::ELFCopyConfig> ELFConfig = elf::parseConfig(*this);

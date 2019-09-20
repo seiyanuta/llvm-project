@@ -262,7 +262,7 @@ static Error executeObjcopy(CopyConfig &Config) {
     Stat.permissions(static_cast<sys::fs::perms>(0777));
   }
 
-  typedef Error (*ProcessRawFn)(CopyConfig &, MemoryBuffer &, Buffer &);
+  using ProcessRawFn = Error (*)(CopyConfig &, MemoryBuffer &, Buffer &);
   ProcessRawFn ProcessRaw;
   switch (Config.InputFormat) {
   case FileFormat::Binary:

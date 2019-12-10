@@ -1,0 +1,40 @@
+language: cpp
+
+sudo: false
+dist: xenial
+
+cache:
+  apt: true
+
+addons:
+  apt:
+    sources:
+      - sourceline: 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main'
+        key_url: https://apt.llvm.org/llvm-snapshot.gpg.key
+      - ubuntu-toolchain-r-test
+    packages:
+      - libedit-dev
+      - llvm-8-dev
+      - clang-8
+      - ninja-build
+      - valgrind
+
+before_script:
+  - mkdir -p llvm/build
+  - cd llvm/build
+  - >
+    cmake -G Ninja ..
+    -DCMAKE_C_COMPILER=clang-8
+    -DCMAKE_ASM_COMPILER=clang-8
+    -DCMAKE_CXX_COMPILER=clang++-8
+    -DCMAKE_BUILD_TYPE=Debug
+    -DLLVM_USE_SANITIZER="Address;Undefined"
+    -DLLVM_OPTIMIZED_TABLEGEN=true
+    -DLLVM_TARGETS_TO_BUILD=X86
+
+script:
+  - ninja FileCheck yaml2obj obj2yaml count not llvm-config llvm-readobj llvm-readelf llvm-ar llvm-nm llvm-mc
+  - ninja llvm-objcopy llvm-strip
+  - ninja llvm-objdump
+  - ./bin/llvm-lit -v -j2 ../test/tools/llvm-objcopy
+#  - ./bin/llvm-lit -v -j2 ../test/tools/llvm-objcopy/ELF/basic-*.test --vg

@@ -150,7 +150,7 @@ uint64_t MachOLayoutBuilder::layoutSegments() {
           uint64_t PaddingSize =
               offsetToAlignment(SegFileSize, Align(1ull << Sec.Align));
           Sec.Offset = SegOffset + SegFileSize + PaddingSize;
-          Sec.Size = Sec.Content.size();
+          Sec.Size = Sec.getContent().size();
           SegFileSize += PaddingSize + Sec.Size;
         }
         VMSize = std::max(VMSize, Sec.Addr + Sec.Size);
@@ -161,7 +161,7 @@ uint64_t MachOLayoutBuilder::layoutSegments() {
         } else {
           uint32_t SectOffset = Sec.Addr - SegmentVmAddr;
           Sec.Offset = SegOffset + SectOffset;
-          Sec.Size = Sec.Content.size();
+          Sec.Size = Sec.getContent().size();
           SegFileSize = std::max(SegFileSize, SectOffset + Sec.Size);
           VMSize = std::max(VMSize, SegFileSize);
         }

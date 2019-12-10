@@ -29,12 +29,9 @@ void MachOReader::readHeader(Object &O) const {
 
 template <typename SectionType>
 Section constructSectionCommon(SectionType Sec) {
-  Section S;
-  S.Sectname =
-      StringRef(Sec.sectname, strnlen(Sec.sectname, sizeof(Sec.sectname)))
-          .str();
-  S.Segname =
-      StringRef(Sec.segname, strnlen(Sec.segname, sizeof(Sec.sectname))).str();
+  StringRef Segname(Sec.segname, strnlen(Sec.segname, sizeof(Sec.segname)));
+  StringRef Sectname(Sec.sectname, strnlen(Sec.sectname, sizeof(Sec.sectname)));
+  Section S(Segname, Sectname);
   S.CanonicalName = (Twine(S.Segname) + "," + S.Sectname).str();
   S.Addr = Sec.addr;
   S.Size = Sec.size;
@@ -90,8 +87,8 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
 
     if (Expected<ArrayRef<uint8_t>> E =
             MachOObj.getSectionContents(SecRef->getRawDataRefImpl()))
-      S.Content =
-          StringRef(reinterpret_cast<const char *>(E->data()), E->size());
+      S.setContent(
+          StringRef(reinterpret_cast<const char *>(E->data()), E->size()));
     else
       reportError(MachOObj.getFileName(), E.takeError());
 

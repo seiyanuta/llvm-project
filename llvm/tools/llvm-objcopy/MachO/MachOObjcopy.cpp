@@ -90,11 +90,11 @@ static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
     for (Section &Sec : LC.Sections) {
       if (Sec.CanonicalName == SecName) {
         Expected<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
-            FileOutputBuffer::create(Filename, Sec.Content.size());
+            FileOutputBuffer::create(Filename, Sec.getContent().size());
         if (!BufferOrErr)
           return BufferOrErr.takeError();
         std::unique_ptr<FileOutputBuffer> Buf = std::move(*BufferOrErr);
-        llvm::copy(Sec.Content, Buf->getBufferStart());
+        llvm::copy(Sec.getContent(), Buf->getBufferStart());
 
         if (Error E = Buf->commit())
           return E;
@@ -106,15 +106,68 @@ static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
                            SecName.str().c_str());
 }
 
+static Error addSection(StringRef SecName, StringRef Filename, Object &Obj) {
+  ErrorOr<std::unique_ptr<MemoryBuffer>> BufOrErr =
+      MemoryBuffer::getFile(Filename);
+  if (!BufOrErr)
+    return createFileError(Filename, errorCodeToError(BufOrErr.getError()));
+  std::unique_ptr<MemoryBuffer> Buf = std::move(*BufOrErr);
+  ArrayRef<uint8_t> Content(
+      reinterpret_cast<const uint8_t *>(Buf->getBufferStart()),
+      Buf->getBufferSize());
+
+  std::pair<StringRef, StringRef> Pair = SecName.split(',');
+  StringRef TargetSegName = Pair.first;
+  Section Sec(TargetSegName, Pair.second);
+  Sec.setOwnedContent(Content);
+
+  // Add the a section into an existing segment.
+  for (LoadCommand &LC : Obj.LoadCommands) {
+    Optional<StringRef> SegName = LC.getSegmentName();
+    if (SegName && SegName == TargetSegName) {
+      LC.Sections.push_back(Sec);
+      return Error::success();
+    }
+  }
+
+  // There's no segment named TargetSegName. Create a new load command and
+  // Insert a new section into it.
+  LoadCommand &NewSegment = Obj.addSegment(TargetSegName);
+  NewSegment.Sections.push_back(Sec);
+  return Error::success();
+}
+
+// isValidMachOCannonicalName returns success if Name is a MachO cannonical name
+// ("<segment>,<section>") and lengths of both segment and section names are
+// valid.
+Error isValidMachOCannonicalName(StringRef Name) {
+  if (Name.count(',') != 1)
+    return createStringError(errc::invalid_argument,
+                             "invalid section name '%s' (should be formatted "
+                             "as '<segment name>,<section name>')",
+                             Name.str().c_str());
+
+  std::pair<StringRef, StringRef> Pair = Name.split(',');
+  if (Pair.first.size() > 16)
+    return createStringError(errc::invalid_argument,
+                             "too long segment name: '%s'",
+                             Pair.first.str().c_str());
+  if (Pair.second.size() > 16)
+    return createStringError(errc::invalid_argument,
+                             "too long section name: '%s'",
+                             Pair.second.str().c_str());
+  return Error::success();
+}
+
 static Error handleArgs(const CopyConfig &Config, Object &Obj) {
   if (Config.AllowBrokenLinks || !Config.BuildIdLinkDir.empty() ||
       Config.BuildIdLinkInput || Config.BuildIdLinkOutput ||
       !Config.SplitDWO.empty() || !Config.SymbolsPrefix.empty() ||
-      !Config.AllocSectionsPrefix.empty() || !Config.AddSection.empty() ||
-      !Config.KeepSection.empty() || Config.NewSymbolVisibility ||
-      !Config.SymbolsToGlobalize.empty() || !Config.SymbolsToKeep.empty() ||
-      !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
-      !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
+      !Config.AllocSectionsPrefix.empty() || !Config.KeepSection.empty() ||
+      Config.NewSymbolVisibility || !Config.SymbolsToGlobalize.empty() ||
+      !Config.SymbolsToKeep.empty() || !Config.SymbolsToLocalize.empty() ||
+      !Config.SymbolsToWeaken.empty() || !Config.SymbolsToKeepGlobal.empty() ||
+      !Config.SectionsToRename.empty() ||
       !Config.UnneededSymbolsToRemove.empty() ||
       !Config.SetSectionAlignment.empty() || !Config.SetSectionFlags.empty() ||
       Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
@@ -145,6 +198,16 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
     StringRef SecName = SecPair.first;
     StringRef File = SecPair.second;
     if (Error E = dumpSectionToFile(SecName, File, Obj))
+      return E;
+  }
+
+  for (const auto &Flag : Config.AddSection) {
+    std::pair<StringRef, StringRef> SecPair = Flag.split("=");
+    StringRef SecName = SecPair.first;
+    StringRef File = SecPair.second;
+    if (Error E = isValidMachOCannonicalName(SecName))
+      return E;
+    if (Error E = addSection(SecName, File, Obj))
       return E;
   }
 

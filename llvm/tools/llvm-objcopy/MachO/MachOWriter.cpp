@@ -235,9 +235,9 @@ void MachOWriter::writeSections() {
         continue;
 
       assert(Sec.Offset && "Section offset can not be zero");
-      assert((Sec.Size == Sec.Content.size()) && "Incorrect section size");
-      memcpy(B.getBufferStart() + Sec.Offset, Sec.Content.data(),
-             Sec.Content.size());
+      assert((Sec.Size == Sec.getContents().size()) && "Incorrect section size");
+      memcpy(B.getBufferStart() + Sec.Offset, Sec.getContents().data(),
+             Sec.getContents().size());
       for (size_t Index = 0; Index < Sec.Relocations.size(); ++Index) {
         auto RelocInfo = Sec.Relocations[Index];
         if (!RelocInfo.Scattered) {

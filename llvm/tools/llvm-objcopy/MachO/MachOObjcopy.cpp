@@ -90,11 +90,11 @@ static Error dumpSectionToFile(StringRef SecName, StringRef Filename,
     for (Section &Sec : LC.Sections) {
       if (Sec.CanonicalName == SecName) {
         Expected<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
-            FileOutputBuffer::create(Filename, Sec.Content.size());
+            FileOutputBuffer::create(Filename, Sec.getContents().size());
         if (!BufferOrErr)
           return BufferOrErr.takeError();
         std::unique_ptr<FileOutputBuffer> Buf = std::move(*BufferOrErr);
-        llvm::copy(Sec.Content, Buf->getBufferStart());
+        llvm::copy(Sec.getContents(), Buf->getBufferStart());
 
         if (Error E = Buf->commit())
           return E;

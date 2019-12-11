@@ -109,6 +109,9 @@ struct LoadCommand {
   // Section describes only sections' metadata and where to find the
   // corresponding content inside the binary.
   std::vector<Section> Sections;
+
+  // Returns the segment name if the load command is a segment command.
+  Optional<StringRef> getSegmentName() const;
 };
 
 // A symbol information. Fields which starts with "n_" are same as them in the
@@ -305,6 +308,16 @@ struct Object {
 
   void removeSections(function_ref<bool(const Section &)> ToRemove);
   void addLoadCommand(LoadCommand LC);
+
+  /// Creates a new segment load command in the object and returns a reference
+  /// to the newly created load command. The caller should verify that SegName
+  /// is not too long (SegName.size() should be less than or equal to 16).
+  LoadCommand &addSegment(StringRef SegName);
+
+  bool is64Bit() const {
+    return Header.Magic == MachO::MH_MAGIC_64 ||
+           Header.Magic == MachO::MH_CIGAM_64;
+  }
 };
 
 } // end namespace macho

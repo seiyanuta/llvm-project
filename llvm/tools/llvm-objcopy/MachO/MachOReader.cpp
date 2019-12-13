@@ -103,6 +103,7 @@ extractSections(const object::MachOObjectFile::LoadCommandInfo &LoadCmd,
       R.Symbol = nullptr; // We'll fill this field later.
       R.Info = MachOObj.getRelocation(RI->getRawDataRefImpl());
       R.Scattered = MachOObj.isRelocationScattered(R.Info);
+      R.Extern = R.Scattered ? false : MachOObj.getPlainRelocationExternal(R.Info);
       S.Relocations.push_back(R);
     }
 
@@ -208,7 +209,7 @@ void MachOReader::setSymbolInRelocationInfo(Object &O) const {
   for (auto &LC : O.LoadCommands)
     for (auto &Sec : LC.Sections)
       for (auto &Reloc : Sec.Relocations)
-        if (!Reloc.Scattered) {
+        if (!Reloc.Scattered && Reloc.Extern) {
           auto *Info = reinterpret_cast<MachO::relocation_info *>(&Reloc.Info);
           Reloc.Symbol = O.SymTable.getSymbolByIndex(Info->r_symbolnum);
         }

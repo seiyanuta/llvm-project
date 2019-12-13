@@ -240,7 +240,7 @@ void MachOWriter::writeSections() {
              Sec.Content.size());
       for (size_t Index = 0; Index < Sec.Relocations.size(); ++Index) {
         auto RelocInfo = Sec.Relocations[Index];
-        if (!RelocInfo.Scattered) {
+        if (!RelocInfo.Scattered && RelocInfo.Extern) {
           auto *Info =
               reinterpret_cast<MachO::relocation_info *>(&RelocInfo.Info);
           Info->r_symbolnum = RelocInfo.Symbol->Index;
